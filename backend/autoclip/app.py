@@ -19,8 +19,10 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__, db, paths
 from .api import api_router
+from .engine import engine
 from .jobs.events import broker
 from .jobs.queue import queue
+from .publishing import publish_queue
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +57,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # makes API tests deterministic — jobs stay queued instead of racing off.
     worker_enabled = os.environ.get(ENV_NO_WORKER) != "1"
     if worker_enabled:
+        # Existing behaviour is preserved: the engine is running on launch. It
+        # loads lazily rather than preloading a model the user may not need, so
+        # startup stays fast; an explicit Stop/Start cycle does load and unload.
+        try:
+            engine.start(preload=False)
+        except Exception as exc:  # noqa: BLE001 - startup must not be fatal
+            log.warning("Engine did not start cleanly: %s", exc)
         await queue.start()
+        await publish_queue.start()
     else:
         log.info("Job worker disabled by %s=1.", ENV_NO_WORKER)
 
@@ -65,7 +75,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         if worker_enabled:
+            await publish_queue.stop()
             await queue.stop()
+            with contextlib.suppress(Exception):
+                engine.stop(force=True)
 
 
 def create_app() -> FastAPI:
@@ -133,6 +146,20 @@ def _mount_frontend(app: FastAPI) -> None:
         """
         if full_path.startswith("api/"):
             return JSONResponse(status_code=404, content={"detail": "Not found."})
+
+        # The installed-app OAuth client registers ``http://localhost`` with no
+        # path, so Google sends the code to the root URL. Intercept it here
+        # before the SPA sees a route it would otherwise ignore.
+        if full_path in ("", "publishing"):
+            params = request.query_params
+            if "code" in params or "error" in params:
+                from .api.publishing import complete_callback
+
+                return await complete_callback(
+                    code=params.get("code", ""),
+                    state=params.get("state", ""),
+                    error=params.get("error", ""),
+                )
 
         candidate = directory / full_path
         if full_path and candidate.is_file():

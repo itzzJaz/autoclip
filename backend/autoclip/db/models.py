@@ -17,6 +17,8 @@ from typing import Any, Literal
 SourceType = Literal["youtube", "upload"]
 JobStatus = Literal["queued", "running", "failed", "done", "cancelled"]
 ClipStatus = Literal["candidate", "kept", "discarded", "exported"]
+PublishStatus = Literal["pending", "uploading", "processing", "published", "failed"]
+Privacy = Literal["private", "unlisted", "public"]
 
 
 def new_id() -> str:
@@ -206,4 +208,58 @@ class Export:
             style=row["style"],
             size_bytes=row["size_bytes"],
             created_at=row["created_at"],
+        )
+
+
+@dataclass
+class PublishJob:
+    """One scheduled YouTube upload for one exported file.
+
+    Deliberately one row per export: the unique index in the schema is what
+    makes "publish" idempotent, so a double click or a retry can never produce
+    two videos on the channel.
+    """
+
+    id: str
+    export_id: str
+    title: str = ""
+    description: str = ""
+    hashtags: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    privacy: Privacy = "private"
+    status: PublishStatus = "pending"
+    progress: float = 0.0
+    video_id: str | None = None
+    url: str | None = None
+    error: str | None = None
+    attempts: int = 0
+    thumbnail_path: str | None = None
+    created_at: str = field(default_factory=utcnow)
+    updated_at: str = field(default_factory=utcnow)
+    published_at: str | None = None
+
+    @property
+    def in_flight(self) -> bool:
+        return self.status in ("pending", "uploading", "processing")
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> PublishJob:
+        return cls(
+            id=row["id"],
+            export_id=row["export_id"],
+            title=row["title"],
+            description=row["description"],
+            hashtags=json.loads(row["hashtags_json"] or "[]"),
+            tags=json.loads(row["tags_json"] or "[]"),
+            privacy=row["privacy"],
+            status=row["status"],
+            progress=row["progress"],
+            video_id=row["video_id"],
+            url=row["url"],
+            error=row["error"],
+            attempts=row["attempts"],
+            thumbnail_path=row["thumbnail_path"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            published_at=row["published_at"],
         )

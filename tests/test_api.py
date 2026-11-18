@@ -282,6 +282,32 @@ class TestClips:
         assert [c["rank"] for c in clips] == [1, 2, 3]
         assert clips[0]["duration_s"] == pytest.approx(40.0)
 
+    def test_create_manual_clip(self, client: TestClient, job_with_clips: Job) -> None:
+        response = client.post(
+            f"/api/jobs/{job_with_clips.id}/clips",
+            json={"start_s": 12.5, "end_s": 47.25, "title": "My moment"},
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["title"] == "My moment"
+        assert body["start_s"] == 12.5
+        assert body["end_s"] == 47.25
+        assert body["duration_s"] == pytest.approx(34.75)
+        assert body["status"] == "kept"
+        assert body["rank"] == 4
+        assert body["reason"] == "User-selected segment"
+
+    def test_manual_clip_end_must_be_in_source(
+        self, client: TestClient, job_with_clips: Job
+    ) -> None:
+        response = client.post(
+            f"/api/jobs/{job_with_clips.id}/clips",
+            json={"start_s": 20.0, "end_s": 601.0, "title": "Too long"},
+        )
+
+        assert response.status_code == 400
+
     def test_patch_title_and_status(self, client: TestClient, job_with_clips: Job) -> None:
         clip_id = client.get(f"/api/jobs/{job_with_clips.id}/clips").json()[0]["id"]
 

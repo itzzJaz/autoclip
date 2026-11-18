@@ -65,6 +65,11 @@ class MediaInfo:
     video_codec: str | None = None
     audio_codec: str | None = None
     title: str | None = None
+    #: Frame count as the container declares it. None when ffprobe can't say
+    #: (some streams only report it after a full decode).
+    frame_count: int | None = None
+    #: First presentation timestamp of the video stream, in seconds.
+    video_start_s: float | None = None
 
     @property
     def aspect_ratio(self) -> float | None:
@@ -199,10 +204,19 @@ def probe(path: Path) -> MediaInfo:
         info.height = _as_int(video.get("height"))
         info.fps = _parse_fps(video.get("avg_frame_rate") or video.get("r_frame_rate"))
         info.video_codec = video.get("codec_name")
+        info.frame_count = _as_int(video.get("nb_frames"))
+        info.video_start_s = _as_float(video.get("start_time"))
     if audio is not None:
         info.audio_codec = audio.get("codec_name")
 
     return info
+
+
+def _as_float(value: object) -> float | None:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_int(value: object) -> int | None:
@@ -224,6 +238,63 @@ def _parse_fps(rate: str | None) -> float | None:
         return float(rate)
     except (ValueError, ZeroDivisionError):
         return None
+
+
+def first_video_packet_pts(path: Path) -> float | None:
+    """Presentation timestamp of the first video packet, in seconds.
+
+    A clip whose first frame sits at t=0.9s plays as a frozen frame for the
+    first nine tenths of a second in most players, which is exactly the
+    "exported file starts frozen" report. Reading one packet is nearly free.
+    """
+    command = [
+        ffprobe_path(),
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "packet=pts_time",
+        "-of",
+        "csv=p=0",
+        "-read_intervals",
+        "%+#1",
+        str(path),
+    ]
+    proc = subprocess.run(command, capture_output=True, text=True, check=False, encoding="utf-8")
+    if proc.returncode != 0:
+        return None
+    first = proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+    return _as_float(first.split(",")[0])
+
+
+def decode_errors(path: Path) -> str:
+    """Fully decode a file's first video and audio streams, returning stderr.
+
+    An empty string means every packet decoded without complaint. This is the
+    cheap end-to-end integrity check that a container-level probe cannot give:
+    a half-written or interleaved-write MP4 still reports a plausible duration
+    and frame count while its mdat is garbage.
+    """
+    command = [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-nostdin",
+        "-v",
+        "error",
+        "-xerror",
+        "-i",
+        str(path),
+        "-map",
+        "0:v:0?",
+        "-map",
+        "0:a:0?",
+        "-f",
+        "null",
+        "-",
+    ]
+    proc = subprocess.run(command, capture_output=True, text=True, check=False, encoding="utf-8")
+    return (proc.stderr or "").strip()
 
 
 # --------------------------------------------------------------------------

@@ -191,6 +191,12 @@ class ClipPatchIn(BaseModel):
     status: Literal["candidate", "kept", "discarded", "exported"] | None = None
 
 
+class ManualClipIn(BaseModel):
+    start_s: float = Field(ge=0)
+    end_s: float = Field(gt=0)
+    title: str = Field(default="Manual clip", max_length=200)
+
+
 class CaptionPatchIn(BaseModel):
     """Word-level caption edits for one clip."""
 
@@ -229,6 +235,7 @@ class SettingsOut(BaseModel):
     clips: dict[str, Any]
     ingest: dict[str, Any]
     export: dict[str, Any]
+    publish: dict[str, Any]
     insecure_secret_storage: bool
     #: Which providers have a key stored. The keys themselves never leave the
     #: keyring, so the UI shows presence, not value.
@@ -242,6 +249,7 @@ class SettingsIn(BaseModel):
     clips: dict[str, Any] | None = None
     ingest: dict[str, Any] | None = None
     export: dict[str, Any] | None = None
+    publish: dict[str, Any] | None = None
 
 
 class SecretIn(BaseModel):
@@ -260,3 +268,140 @@ class SystemOut(BaseModel):
     gpu_name: str | None
     compute_type: str
     diarization_available: bool
+
+
+class EngineOut(BaseModel):
+    state: str
+    error: str | None = None
+    model: str = ""
+    model_loaded: str | None = None
+    started_at: str | None = None
+    active_job_id: str | None = None
+    queued: int = 0
+    ffmpeg_version: str | None = None
+    ready: bool = False
+
+
+class EngineStopIn(BaseModel):
+    #: Cancel an in-flight job instead of refusing to stop.
+    force: bool = False
+
+
+class PublishOut(BaseModel):
+    id: str
+    export_id: str
+    title: str
+    description: str
+    hashtags: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    privacy: str
+    status: str
+    progress: float
+    video_id: str | None = None
+    url: str | None = None
+    error: str | None = None
+    attempts: int = 0
+    created_at: str
+    updated_at: str
+    published_at: str | None = None
+    thumbnail_url: str | None = None
+    download_url: str | None = None
+
+    @classmethod
+    def of(cls, job: models.PublishJob) -> PublishOut:
+        return cls(
+            id=job.id,
+            export_id=job.export_id,
+            title=job.title,
+            description=job.description,
+            hashtags=job.hashtags,
+            tags=job.tags,
+            privacy=job.privacy,
+            status=job.status,
+            progress=job.progress,
+            video_id=job.video_id,
+            url=job.url,
+            error=job.error,
+            attempts=job.attempts,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+            published_at=job.published_at,
+            thumbnail_url=f"/api/exports/{job.export_id}/thumbnail",
+            download_url=f"/api/exports/{job.export_id}/download",
+        )
+
+
+class ExportDetailOut(BaseModel):
+    id: str
+    clip_id: str
+    job_id: str | None = None
+    title: str = ""
+    hook: str = ""
+    filename: str = ""
+    duration_s: float = 0.0
+    ratio: str
+    style: str
+    size_bytes: int
+    created_at: str
+    download_url: str
+    thumbnail_url: str
+    preview_url: str = ""
+    publish: PublishOut | None = None
+    validation: dict[str, Any] | None = None
+
+
+class MetadataIn(BaseModel):
+    style: Literal["concise", "story", "educational"] | None = None
+    extra_context: str | None = None
+
+
+class MetadataOut(BaseModel):
+    titles: list[str]
+    recommended_title: str
+    description: str
+    hashtags: list[str]
+    tags: list[str]
+    generated_by: str
+    warning: str = ""
+    notes: list[str] = Field(default_factory=list)
+
+
+class PublishIn(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=5000)
+    hashtags: list[str] = Field(default_factory=list, max_length=5)
+    tags: list[str] = Field(default_factory=list)
+    privacy: Literal["private", "unlisted", "public"] = "private"
+    #: The user has reviewed the file and the metadata.
+    confirm: bool = False
+    #: A second, explicit acknowledgement for a public upload.
+    confirm_public: bool = False
+
+
+class PublishingStatusOut(BaseModel):
+    configured: bool
+    connected: bool
+    redirect_uri: str
+    client_project: str = ""
+    client_source: str = ""
+    configured_redirect_uris: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    expires_at: float | None = None
+    has_refresh_token: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    detail: str = ""
+    hint: str = ""
+
+
+class OAuthStartOut(BaseModel):
+    auth_url: str
+    redirect_uri: str
+    state: str
+
+
+class PublishQueueCountOut(BaseModel):
+    pending: int = 0
+    uploading: int = 0
+    processing: int = 0
+    published: int = 0
+    failed: int = 0

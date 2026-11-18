@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import {
   ApiError,
@@ -10,9 +10,11 @@ import {
   type ProviderStatus,
 } from '../api'
 import { ErrorNote } from '../components/ErrorNote'
+import { useEngine } from '../engine'
 
 export function Ingest() {
   const navigate = useNavigate()
+  const { status: engine } = useEngine()
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState<'url' | 'file' | null>(null)
   const [error, setError] = useState<ApiError | Error | null>(null)
@@ -56,29 +58,45 @@ export function Ingest() {
   const usableProvider = providers.find((p) => p.available)
 
   return (
-    <div className="pt-14">
-      {/* Masthead. Left-aligned and asymmetric — the field is the subject, not
-          a centred hero card. */}
-      <div className="rise max-w-3xl">
-        <p className="eyebrow">Local · No accounts · No watermarks</p>
-        <h1 className="mt-5 font-display text-[clamp(2.75rem,7vw,5.5rem)] leading-[0.95] text-ink-100">
-          Long video in.
-          <br />
-          <span className="italic text-sodium-500">Shorts</span> out.
-        </h1>
-      </div>
+    <div className="space-y-6">
+      <section className="grid gap-5 lg:grid-cols-[1.45fr_0.55fr]">
+        <div className="glass relative overflow-hidden p-6 sm:p-9 lg:p-11">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-24 -top-28 size-80 rounded-full bg-sodium-500/20 blur-3xl"
+          />
+          <p className="eyebrow relative">Local-first · no uploads · no watermark</p>
+          <h1 className="display relative mt-5 text-[clamp(2.9rem,7.2vw,6.4rem)] text-ink-100">
+            Long video in.
+            <br />
+            <span className="serif-accent text-sodium-500">Shorts</span> out.
+          </h1>
+          <p className="relative mt-5 max-w-xl text-sm leading-relaxed text-ink-300">
+            Drop in a podcast, talk, or stream. AutoClip finds the moments that stand on
+            their own, reframes them for a phone, and burns the captions.
+          </p>
 
-      <div className="mt-16 grid gap-x-16 gap-y-12 lg:grid-cols-[1.35fr_1fr]">
-        {/* URL */}
-        <section className="rise" style={{ animationDelay: '90ms' }}>
-          <form onSubmit={submitUrl}>
+          {engine && engine.state !== 'running' && (
+            <div className="relative mt-6 flex flex-wrap items-center gap-3 rounded-[14px] border border-sodium-500/25 bg-sodium-500/[0.07] px-4 py-3">
+              <span className="status-dot text-signal-warn" />
+              <p className="text-xs leading-relaxed text-ink-200">
+                The engine is {engine.state}. New jobs will wait in the queue until it is
+                started.
+              </p>
+              <Link to="/settings" className="ml-auto text-xs font-semibold text-sodium-400">
+                Engine settings →
+              </Link>
+            </div>
+          )}
+
+          <form onSubmit={submitUrl} className="relative mt-8">
             <label htmlFor="url" className="eyebrow">
               Paste a link
             </label>
-            <div className="mt-3 flex items-end gap-4">
+            <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
               <input
                 id="url"
-                className="field font-display text-xl md:text-2xl"
+                className="field text-[15px]"
                 placeholder="https://youtube.com/watch?v=…"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -88,29 +106,19 @@ export function Ingest() {
               />
               <button
                 type="submit"
-                className="btn btn-primary shrink-0"
+                className="btn btn-primary shrink-0 sm:px-6"
                 disabled={busy !== null || !url.trim()}
               >
-                {busy === 'url' ? 'Fetching…' : 'Start'}
+                {busy === 'url' ? 'Fetching…' : 'Ingest link'}
               </button>
             </div>
+            <p className="mt-2.5 text-[11px] text-ink-500">
+              Only download video you own or have the rights to process.
+            </p>
           </form>
+        </div>
 
-          <p className="mt-3 text-xs leading-relaxed text-ink-500">
-            Only download video you own or have the rights to process.
-          </p>
-
-          <AdvancedOptions
-            open={advancedOpen}
-            onToggle={() => setAdvancedOpen((v) => !v)}
-            overrides={overrides}
-            onChange={setOverrides}
-            providers={providers}
-          />
-        </section>
-
-        {/* Upload */}
-        <section className="rise" style={{ animationDelay: '160ms' }}>
+        <div className="glass flex flex-col p-4 sm:p-5">
           <p className="eyebrow">Or drop a file</p>
           <div
             onDragOver={(e) => {
@@ -125,10 +133,10 @@ export function Ingest() {
               if (file) submitFile(file)
             }}
             className={[
-              'mt-3 flex min-h-52 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed px-6 text-center transition-colors duration-200',
+              'mt-3 flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-[16px] border border-dashed px-5 py-12 text-center transition-colors duration-200',
               dragging
-                ? 'border-sodium-500 bg-sodium-700/10'
-                : 'border-ink-700 hover:border-ink-600',
+                ? 'border-sodium-500 bg-sodium-500/10'
+                : 'border-white/15 bg-white/[0.02] hover:border-white/30 hover:bg-white/[0.04]',
             ].join(' ')}
             onClick={() => fileInput.current?.click()}
             role="button"
@@ -137,10 +145,13 @@ export function Ingest() {
               if (e.key === 'Enter' || e.key === ' ') fileInput.current?.click()
             }}
           >
-            <span className="font-display text-2xl text-ink-200">
-              {busy === 'file' ? 'Uploading…' : 'Drop video or audio'}
+            <span className="grid size-12 place-items-center rounded-full border border-white/15 bg-white/[0.05] text-lg text-sodium-400">
+              ↑
             </span>
-            <span className="text-xs text-ink-500">mp4 · mov · mkv · webm · mp3 · wav · m4a</span>
+            <span className="text-[15px] font-semibold text-ink-100">
+              {busy === 'file' ? 'Uploading…' : dragging ? 'Release to upload' : 'Drop video or audio'}
+            </span>
+            <span className="text-[11px] text-ink-500">mp4 · mov · mkv · webm · mp3 · wav · m4a</span>
           </div>
           <input
             ref={fileInput}
@@ -153,27 +164,50 @@ export function Ingest() {
               e.target.value = ''
             }}
           />
-        </section>
-      </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            <Stat label="Transcribe" value="Whisper" />
+            <Stat label="Reframe" value="MediaPipe" />
+            <Stat label="Render" value="ffmpeg" />
+          </div>
+        </div>
+      </section>
 
       {error && (
-        <div className="mt-10 max-w-3xl">
+        <div className="glass p-5">
           <ErrorNote error={error} onDismiss={() => setError(null)} />
         </div>
       )}
 
       {providers.length > 0 && !usableProvider && (
-        <p className="mt-10 max-w-3xl border-l-2 border-sodium-600 pl-4 text-sm text-ink-300">
-          No AI provider is reachable yet, so clip selection will fail. Add an API key or
-          start Ollama in{' '}
-          <a href="/settings" className="text-sodium-500 underline underline-offset-4">
-            Settings
-          </a>
-          .
+        <p className="glass flex flex-wrap items-center gap-2 px-5 py-4 text-xs text-ink-300">
+          <span className="status-dot text-signal-warn" />
+          No AI provider is reachable yet, so clip selection will fail.
+          <Link to="/settings" className="font-semibold text-sodium-400">
+            Add a key or start Ollama →
+          </Link>
         </p>
       )}
 
-      <RecentJobs jobs={jobs} />
+      <section className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+        <AdvancedOptions
+          open={advancedOpen}
+          onToggle={() => setAdvancedOpen((v) => !v)}
+          overrides={overrides}
+          onChange={setOverrides}
+          providers={providers}
+        />
+        <RecentJobs jobs={jobs} />
+      </section>
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[10px] border border-white/[0.07] bg-white/[0.02] px-2 py-2">
+      <span className="block text-[9px] uppercase tracking-[0.18em] text-ink-500">{label}</span>
+      <span className="mt-1 block text-[11px] font-semibold text-ink-200">{value}</span>
     </div>
   )
 }
@@ -195,26 +229,25 @@ function AdvancedOptions({
     onChange({ ...overrides, [key]: value })
 
   return (
-    <div className="mt-8">
-      <button type="button" onClick={onToggle} className="btn btn-quiet -ml-1">
-        <span
-          className="inline-block transition-transform duration-300"
-          style={{ transform: open ? 'rotate(90deg)' : 'none' }}
-          aria-hidden
-        >
-          ›
-        </span>
-        {open ? 'Hide options' : 'Options'}
-      </button>
+    <div className="glass p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="eyebrow">Run options</p>
+          <p className="mt-1 text-[11px] text-ink-500">
+            Overrides for this job only. Saved defaults live in Settings.
+          </p>
+        </div>
+        <button type="button" onClick={onToggle} className="btn btn-ghost px-3 py-2 text-[12px]">
+          {open ? 'Hide' : 'Configure'}
+        </button>
+      </div>
 
-      {/* grid-template-rows rather than height, so the reveal animates without
-          touching layout properties. */}
       <div
         className="grid transition-[grid-template-rows] duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="grid gap-x-8 gap-y-5 pt-5 sm:grid-cols-2">
+          <div className="grid gap-4 pt-5 sm:grid-cols-2">
             <Selector
               label="Provider"
               value={overrides.provider ?? ''}
@@ -234,11 +267,11 @@ function AdvancedOptions({
               onChange={(v) => set('whisper_model', v || undefined)}
               options={[
                 { value: '', label: 'Use default' },
-                { value: 'tiny', label: 'tiny — fastest, roughest' },
+                { value: 'tiny', label: 'tiny — fastest' },
                 { value: 'base', label: 'base' },
                 { value: 'small', label: 'small — balanced' },
                 { value: 'medium', label: 'medium' },
-                { value: 'large-v3', label: 'large-v3 — slowest, best' },
+                { value: 'large-v3', label: 'large-v3 — best' },
               ]}
             />
             <NumberField
@@ -249,7 +282,7 @@ function AdvancedOptions({
               max={50}
               onChange={(v) => set('max_clips', v)}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <NumberField
                 label="Min length (s)"
                 value={overrides.min_duration_s}
@@ -267,14 +300,14 @@ function AdvancedOptions({
                 onChange={(v) => set('max_duration_s', v)}
               />
             </div>
-            <label className="flex items-center gap-3 text-sm text-ink-200 sm:col-span-2">
+            <label className="flex items-center gap-3 text-[12px] text-ink-200 sm:col-span-2">
               <input
                 type="checkbox"
                 checked={overrides.diarization ?? false}
                 onChange={(e) => set('diarization', e.target.checked || undefined)}
                 className="size-4 accent-sodium-500"
               />
-              Multiple speakers — label who is talking, and cut to them
+              Label speakers and cut to whoever is talking
             </label>
           </div>
         </div>
@@ -300,15 +333,10 @@ function Selector({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="field mt-1 cursor-pointer text-sm"
+        className="field mt-1.5 cursor-pointer text-[12px]"
       >
         {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-            disabled={option.disabled}
-            className="bg-ink-850"
-          >
+          <option key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
           </option>
         ))}
@@ -337,7 +365,7 @@ function NumberField({
       <span className="eyebrow">{label}</span>
       <input
         type="number"
-        className="field numeric mt-1 text-sm"
+        className="field numeric mt-1.5 text-[12px]"
         placeholder={placeholder}
         value={value ?? ''}
         min={min}
@@ -349,36 +377,54 @@ function NumberField({
 }
 
 function RecentJobs({ jobs }: { jobs: Job[] }) {
-  if (jobs.length === 0) return null
-
   return (
-    <section className="rise mt-24" style={{ animationDelay: '240ms' }}>
-      <div className="flex items-baseline justify-between border-b border-ink-800 pb-3">
-        <h2 className="eyebrow">Recent</h2>
-        <span className="numeric text-xs text-ink-600">{jobs.length}</span>
+    <div className="glass flex min-h-48 flex-col p-5 sm:p-6">
+      <div className="flex items-baseline justify-between">
+        <p className="eyebrow">Recent runs</p>
+        <span className="numeric text-[10px] text-ink-500">{jobs.length}</span>
       </div>
 
-      <ul>
-        {jobs.map((job) => (
-          <li key={job.id}>
-            <a
-              href={job.status === 'done' ? `/jobs/${job.id}/clips` : `/jobs/${job.id}`}
-              className="group grid grid-cols-[1fr_auto] items-baseline gap-4 border-b border-ink-850 py-4 transition-colors duration-200 hover:bg-ink-850/40 sm:grid-cols-[1fr_7rem_6rem_5rem]"
-            >
-              <span className="truncate text-[0.9375rem] text-ink-200 group-hover:text-ink-100">
-                {job.source?.title || 'Untitled'}
-              </span>
-              <span className="numeric hidden text-xs text-ink-500 sm:block">
-                {job.source ? formatDuration(job.source.duration_s) : '—'}
-              </span>
-              <span className="hidden text-xs text-ink-500 sm:block">{job.provider}</span>
-              <StatusTag job={job} />
-            </a>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {jobs.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center py-10 text-center">
+          <p className="max-w-56 text-xs leading-relaxed text-ink-500">
+            Nothing processed yet. Your first run will appear here.
+          </p>
+        </div>
+      ) : (
+        <ul className="mt-3 flex-1">
+          {jobs.map((job) => (
+            <li key={job.id}>
+              <Link
+                to={job.status === 'done' ? `/jobs/${job.id}/clips` : `/jobs/${job.id}`}
+                className="glass-link group -mx-2 flex items-center gap-3 px-2 py-3"
+              >
+                <span className={`status-dot ${jobTone(job.status)}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-ink-200 group-hover:text-ink-100">
+                    {job.source?.title || 'Untitled'}
+                  </span>
+                  <span className="numeric mt-0.5 block text-[10px] text-ink-500">
+                    {job.source ? formatDuration(job.source.duration_s) : '—'} · {job.provider}
+                  </span>
+                </span>
+                <StatusTag job={job} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
+}
+
+function jobTone(status: Job['status']): string {
+  return {
+    done: 'text-signal-good',
+    failed: 'text-signal-bad',
+    running: 'text-sodium-500',
+    queued: 'text-ink-500',
+    cancelled: 'text-ink-500',
+  }[status]
 }
 
 function StatusTag({ job }: { job: Job }) {
@@ -389,11 +435,10 @@ function StatusTag({ job }: { job: Job }) {
     queued: 'text-ink-400',
     cancelled: 'text-ink-500',
   }
-  const label =
-    job.status === 'running' ? `${Math.round(job.progress * 100)}%` : job.status
+  const label = job.status === 'running' ? `${Math.round(job.progress * 100)}%` : job.status
 
   return (
-    <span className={`numeric justify-self-end text-xs ${tone[job.status] ?? 'text-ink-400'}`}>
+    <span className={`numeric shrink-0 text-[10px] font-semibold uppercase tracking-wider ${tone[job.status] ?? 'text-ink-400'}`}>
       {label}
     </span>
   )

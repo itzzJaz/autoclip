@@ -39,11 +39,14 @@ export function Settings() {
   if (!settings) return <p className="pt-24 text-sm text-ink-500">Loading…</p>
 
   return (
-    <div className="max-w-4xl pt-14">
-      <div className="rise flex items-baseline justify-between border-b border-ink-800 pb-5">
-        <h1 className="font-display text-[clamp(2rem,4vw,3rem)] leading-none text-ink-100">
-          Settings
-        </h1>
+    <div className="mx-auto max-w-4xl space-y-4">
+      <div className="rise flex items-baseline justify-between px-1">
+        <div>
+          <p className="eyebrow">Preferences</p>
+          <h1 className="display mt-2 text-[clamp(2.2rem,5vw,3.6rem)] leading-none text-ink-100">
+            Settings
+          </h1>
+        </div>
         <span
           className="text-xs text-signal-good transition-opacity duration-300"
           style={{ opacity: saved ? 1 : 0 }}
@@ -53,17 +56,16 @@ export function Settings() {
       </div>
 
       {error && (
-        <div className="mt-6">
+        <div className="glass p-5">
           <ErrorNote error={error} onDismiss={() => setError(null)} />
         </div>
       )}
 
       {settings.insecure_secret_storage && (
-        <p className="mt-6 border-l-2 border-sodium-600 pl-4 text-sm leading-relaxed text-ink-300">
-          No OS keyring is available on this machine, so API keys are stored in plain text
-          in <code className="text-ink-200">config.json</code>. On headless Linux, installing
-          a Secret Service provider or <code className="text-ink-200">keyrings.alt</code>{' '}
-          fixes this.
+        <p className="glass-quiet border-signal-warn/25 px-4 py-3 text-xs leading-relaxed text-ink-300">
+          No OS keyring is available on this machine, so API keys are stored in plain text in{' '}
+          <code className="text-ink-200">config.json</code>. On headless Linux, installing a Secret
+          Service provider or <code className="text-ink-200">keyrings.alt</code> fixes this.
         </p>
       )}
 
@@ -269,6 +271,76 @@ export function Settings() {
         </label>
       </Section>
 
+      <Section title="Publishing" note="Defaults for every YouTube upload. Private stays the safe default.">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Select
+            label="Default visibility"
+            hint="Public uploads always need a second confirmation in the studio."
+            value={settings.publish.default_privacy}
+            onChange={(value) =>
+              patch({
+                publish: {
+                  ...settings.publish,
+                  default_privacy: value as SettingsData['publish']['default_privacy'],
+                },
+              })
+            }
+            options={['private', 'unlisted', 'public']}
+            labels={{ private: 'Private', unlisted: 'Unlisted', public: 'Public' }}
+          />
+          <Select
+            label="Description style"
+            value={settings.publish.description_style}
+            onChange={(value) =>
+              patch({
+                publish: {
+                  ...settings.publish,
+                  description_style: value as SettingsData['publish']['description_style'],
+                },
+              })
+            }
+            options={['concise', 'story', 'educational']}
+            labels={{ concise: 'Concise', story: 'Story', educational: 'Educational' }}
+          />
+          <Field
+            label="Default hashtags"
+            hint="Space or comma separated. Kept when relevant, not pasted blindly."
+            value={settings.publish.default_hashtags}
+            placeholder="#podcast #clip"
+            onCommit={(value) =>
+              patch({ publish: { ...settings.publish, default_hashtags: value } })
+            }
+          />
+          <Field
+            label="Default tags"
+            hint="Comma separated. Optional — these are YouTube's keyword tags."
+            value={settings.publish.default_tags}
+            placeholder="podcast, highlights"
+            onCommit={(value) => patch({ publish: { ...settings.publish, default_tags: value } })}
+          />
+        </div>
+
+        <label className="mt-5 flex items-start gap-3 text-sm text-ink-200">
+          <input
+            type="checkbox"
+            checked={settings.publish.hashtags_in_description}
+            onChange={(e) =>
+              patch({
+                publish: { ...settings.publish, hashtags_in_description: e.target.checked },
+              })
+            }
+            className="mt-0.5 size-4 accent-sodium-500"
+          />
+          <span>
+            Append hashtags to the description
+            <span className="mt-1 block text-xs text-ink-500">
+              Off keeps them in YouTube&apos;s hashtag box only. #Shorts is never added
+              automatically.
+            </span>
+          </span>
+        </label>
+      </Section>
+
       {system && (
         <Section title="This machine">
           <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
@@ -297,12 +369,12 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="rise mt-14">
-      <div className="border-b border-ink-800 pb-2">
+    <section className="glass rise mt-4 p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="eyebrow">{title}</h2>
-        {note && <p className="mt-1 text-xs text-ink-500">{note}</p>}
+        {note && <p className="text-[10px] text-ink-500">{note}</p>}
       </div>
-      <div className="mt-5">{children}</div>
+      <div className="mt-4">{children}</div>
     </section>
   )
 }

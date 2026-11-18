@@ -1,5 +1,9 @@
 # AutoClip
 
+> **Installed on this Mac.** Start it with `./start-autoclip.sh`, then open
+> <http://127.0.0.1:8000>. See [SETUP.md](SETUP.md) for the local setup,
+> tested features, configuration and troubleshooting.
+
 **Open-source, local-first AI video clipper.** Long video in → ranked, caption-burned, speaker-tracked 9:16 clips out.
 
 [![CI](https://github.com/artbyjazi/autoclip/actions/workflows/ci.yml/badge.svg)](https://github.com/artbyjazi/autoclip/actions/workflows/ci.yml)

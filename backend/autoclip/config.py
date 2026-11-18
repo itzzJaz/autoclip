@@ -94,6 +94,24 @@ class ExportSettings(BaseModel):
     write_srt: bool = False
 
 
+class PublishSettings(BaseModel):
+    """Saved defaults for the publishing studio.
+
+    Metadata is always generated per clip; these are the defaults offered before
+    an upload, never something applied silently after the user edits a title.
+    """
+
+    default_privacy: Literal["private", "unlisted", "public"] = "private"
+    #: How verbose the generated description should be.
+    description_style: Literal["concise", "story", "educational"] = "concise"
+    #: Hashtags the user always wants appended, separated by spaces or commas.
+    default_hashtags: str = ""
+    #: Tags for the YouTube API, separated by commas.
+    default_tags: str = ""
+    #: Put the hashtags at the end of the description as well as in the tags.
+    hashtags_in_description: bool = True
+
+
 class Settings(BaseModel):
     """Top-level persisted settings."""
 
@@ -110,6 +128,7 @@ class Settings(BaseModel):
     clips: ClipSettings = Field(default_factory=ClipSettings)
     ingest: IngestSettings = Field(default_factory=IngestSettings)
     export: ExportSettings = Field(default_factory=ExportSettings)
+    publish: PublishSettings = Field(default_factory=PublishSettings)
 
     #: Set when secrets had to be written to config.json because no keyring
     #: backend was usable. Surfaced as a warning in the UI and in `doctor`.

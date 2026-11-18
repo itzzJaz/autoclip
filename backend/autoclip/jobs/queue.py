@@ -111,6 +111,17 @@ class JobQueue:
         assert wakeup is not None
 
         while not self._stopping:
+            # The worker is allowed to exist while the engine is stopped — the
+            # database queue stays intact — but it must not pull a job until the
+            # user has started the engine.
+            from ..engine import engine
+
+            if not engine.is_running():
+                wakeup.clear()
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(wakeup.wait(), timeout=1.0)
+                continue
+
             job = await asyncio.to_thread(store.next_queued_job)
             if job is None:
                 wakeup.clear()

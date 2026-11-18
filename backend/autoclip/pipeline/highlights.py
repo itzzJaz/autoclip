@@ -131,7 +131,8 @@ async def detect(
     """Run detection across the whole transcript and return ranked clips."""
     windows = build_windows(transcript)
     if not windows:
-        raise HighlightError("The transcript is empty, so there is nothing to clip.")
+        log.info("The transcript is empty; returning no AI clips for manual selection.")
+        return []
 
     log.info("Detecting highlights across %d window(s) with %s.", len(windows), provider.name)
 
@@ -165,11 +166,8 @@ async def detect(
     candidates = [c for group in results for c in group]
 
     if not candidates:
-        raise HighlightError(
-            "No clips were found. This can mean the video genuinely has no "
-            "self-contained highlights, or that the model struggled with the "
-            "transcript — try a larger model or a different provider."
-        )
+        log.info("No AI candidates were found; continuing to manual review.")
+        return []
 
     log.info("Providers proposed %d raw candidates.", len(candidates))
     return build_clips(transcript, candidates, config, job_id=job_id, silences=silences or [])

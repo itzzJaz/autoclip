@@ -105,7 +105,7 @@ def transcribe(
     ensure_cuda_libraries()
 
     try:
-        from faster_whisper import WhisperModel
+        import faster_whisper  # noqa: F401
     except ImportError as exc:  # pragma: no cover - faster-whisper is a core dep
         raise TranscriptionError(
             "faster-whisper is not installed. Run `autoclip doctor` for details."
@@ -120,7 +120,11 @@ def transcribe(
     )
 
     try:
-        model = WhisperModel(settings.model, device=device, compute_type=compute_type)
+        # Cached process-wide: a second job reuses the loaded weights, and the
+        # engine's Stop button is what actually releases them.
+        from .. import model_cache
+
+        model = model_cache.get_whisper_model(settings.model, device, compute_type)
     except Exception as exc:
         raise _model_load_error(exc, device, compute_type) from exc
 

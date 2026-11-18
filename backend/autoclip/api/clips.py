@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from .. import paths
 from ..config import load as load_settings
 from ..db import store
-from ..db.models import Export, new_id
+from ..db.models import Clip, Export, new_id
 from ..pipeline import captions as captions_module
 from ..pipeline import export as export_module
 from ..pipeline.reframe.croppath import CropPath, centre_crop
@@ -21,6 +21,7 @@ from ..pipeline.transcript import Transcript, Word
 from .schemas import (
     CaptionPatchIn,
     CaptionStyleOut,
+    ManualClipIn,
     ClipOut,
     ClipPatchIn,
     ExportOut,
@@ -53,6 +54,49 @@ async def get_clip(clip_id: str) -> ClipOut:
     if clip is None:
         raise HTTPException(status_code=404, detail="Clip not found.")
     return await asyncio.to_thread(_clip_out, clip)
+
+
+@router.post("/jobs/{job_id}/clips", response_model=ClipOut, status_code=201)
+async def create_manual_clip(job_id: str, payload: ManualClipIn) -> ClipOut:
+    """Create a user-selected segment as a normal editable/exportable clip."""
+    job = await asyncio.to_thread(store.get_job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if payload.end_s <= payload.start_s:
+        raise HTTPException(status_code=400, detail="End must come after start.")
+
+    source = await asyncio.to_thread(store.get_source, job.source_id)
+    if source is not None and payload.end_s > source.duration_s:
+        raise HTTPException(status_code=400, detail="Clip end exceeds the source duration.")
+
+    transcript = await asyncio.to_thread(_load_transcript_optional, job_id)
+    if transcript is not None:
+        first, last = transcript.indices_in_range(payload.start_s, payload.end_s)
+        start_word = first
+        end_word = max(first, last - 1)
+        title = payload.title.strip() or transcript.text_between(first, min(first + 8, end_word))
+    else:
+        start_word = 0
+        end_word = 0
+        title = payload.title.strip() or "Manual clip"
+
+    existing = await asyncio.to_thread(store.list_clips, job_id)
+    clip = Clip(
+        id=new_id(),
+        job_id=job_id,
+        rank=len(existing) + 1,
+        start_s=payload.start_s,
+        end_s=payload.end_s,
+        start_word=start_word,
+        end_word=end_word,
+        title=title,
+        reason="User-selected segment",
+        score=100,
+        status="kept",
+        user_trimmed=True,
+    )
+    created = await asyncio.to_thread(store.create_clip, clip)
+    return await asyncio.to_thread(_clip_out, created)
 
 
 @router.get("/clips/{clip_id}/words", response_model=list[WordOut])
@@ -238,7 +282,7 @@ async def export_clip(clip_id: str, payload: ExportRequestIn) -> ExportOut:
 
 
 @router.get("/exports/{export_id}/download")
-async def download_export(export_id: str) -> FileResponse:
+async def download_export(export_id: str, inline: bool = False) -> FileResponse:
     record = await asyncio.to_thread(store.get_export, export_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Export not found.")
@@ -246,6 +290,12 @@ async def download_export(export_id: str) -> FileResponse:
     path = Path(record.path)
     if not path.exists():
         raise HTTPException(status_code=410, detail="The exported file has been moved or deleted.")
+
+    if inline:
+        # The publish screen plays the real export before uploading it. Passing no
+        # filename keeps Content-Disposition inline so the browser streams it
+        # instead of saving it; Range requests still work for scrubbing.
+        return FileResponse(path, media_type="video/mp4")
 
     return FileResponse(path, media_type="video/mp4", filename=path.name)
 
@@ -303,6 +353,13 @@ def _load_transcript(job_id: str) -> Transcript:
     workspace = JobWorkspace(job_id)
     if not workspace.transcript.exists():
         raise HTTPException(status_code=404, detail="This job has no transcript yet.")
+    return Transcript.load(workspace.transcript)
+
+
+def _load_transcript_optional(job_id: str) -> Transcript | None:
+    workspace = JobWorkspace(job_id)
+    if not workspace.transcript.exists():
+        return None
     return Transcript.load(workspace.transcript)
 
 

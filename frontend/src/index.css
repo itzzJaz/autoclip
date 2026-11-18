@@ -1,12 +1,12 @@
 @import 'tailwindcss';
 
 /* --------------------------------------------------------------------------
-   AutoClip — darkroom edit-suite
+   AutoClip — Liquid Glass
 
-   The room this tool lives in is a darkroom: warm charcoal, one sodium-vapour
-   accent, hairline rules instead of cards. Neutrals are tinted toward the
-   accent hue (55°) rather than the usual blue-black, which is what stops it
-   reading as a generic dark dashboard.
+   A midnight studio lit by two soft lights: neon pink and sunset coral. The
+   surfaces are glass, the radii are concentric (24 / 16 / 10), and the type does
+   the shouting. Colour is spent on state and one primary action, never on
+   decoration for its own sake.
    -------------------------------------------------------------------------- */
 
 @font-face {
@@ -36,28 +36,35 @@
 
 @theme {
   --font-display: 'Instrument Serif', Georgia, serif;
-  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Archivo, ui-sans-serif, system-ui, sans-serif;
 
-  /* Warm charcoals. Never pure black — nothing in a real room is. */
-  --color-ink-900: oklch(0.145 0.011 55);
-  --color-ink-850: oklch(0.175 0.012 55);
-  --color-ink-800: oklch(0.208 0.013 55);
-  --color-ink-700: oklch(0.262 0.014 55);
-  --color-ink-600: oklch(0.335 0.014 55);
-  --color-ink-400: oklch(0.545 0.013 58);
-  --color-ink-300: oklch(0.678 0.012 60);
-  --color-ink-200: oklch(0.812 0.010 62);
-  --color-ink-100: oklch(0.935 0.008 65);
+  /* Midnight → graphite. The old token names are kept so every existing
+     component picks up the new palette without being rewritten. */
+  --color-ink-900: #17151d;
+  --color-ink-850: #1d1a24;
+  --color-ink-800: #26222f;
+  --color-ink-700: #353040;
+  --color-ink-600: #4c4659;
+  --color-ink-500: #6f687e;
+  --color-ink-400: #948ca3;
+  --color-ink-300: #b9b1c5;
+  --color-ink-200: #dcd5e3;
+  --color-ink-100: #f4edf2;
 
-  /* Sodium vapour. One accent, used sparingly, never as a gradient. */
-  --color-sodium-400: oklch(0.845 0.132 68);
-  --color-sodium-500: oklch(0.762 0.168 55);
-  --color-sodium-600: oklch(0.648 0.164 46);
-  --color-sodium-700: oklch(0.512 0.135 44);
+  /* Neon pink is the signal. Coral is its warm neighbour, used for the primary
+     button and for "in progress" states. Neither is used as a wash. */
+  --color-sodium-400: #ff8fbd;
+  --color-sodium-500: #ff65a8;
+  --color-sodium-600: #ff986a;
+  --color-sodium-700: #c94e7e;
 
-  /* Two functional hues, deliberately desaturated so the accent stays loudest. */
-  --color-signal-good: oklch(0.735 0.108 158);
-  --color-signal-bad: oklch(0.635 0.158 28);
+  --color-signal-good: #7ce0b3;
+  --color-signal-bad: #ff7f8d;
+  --color-signal-warn: #ffc46b;
+
+  --radius-glass: 24px;
+  --radius-panel: 16px;
+  --radius-control: 10px;
 
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
@@ -65,13 +72,20 @@
 
 @layer base {
   html {
-    background: var(--color-ink-900);
+    min-height: 100%;
+    background:
+      radial-gradient(58rem 42rem at 12% -8%, rgba(255, 101, 168, 0.22), transparent 62%),
+      radial-gradient(52rem 38rem at 92% 2%, rgba(255, 152, 106, 0.14), transparent 64%),
+      radial-gradient(44rem 32rem at 50% 112%, rgba(255, 101, 168, 0.09), transparent 70%),
+      #17151d;
+    background-attachment: fixed;
     color-scheme: dark;
   }
 
   body {
     margin: 0;
-    background: var(--color-ink-900);
+    min-height: 100vh;
+    background: transparent;
     color: var(--color-ink-100);
     font-family: var(--font-sans);
     font-synthesis-weight: none;
@@ -79,16 +93,19 @@
     text-rendering: optimizeLegibility;
   }
 
+  #root {
+    min-height: 100vh;
+  }
+
   ::selection {
     background: var(--color-sodium-500);
     color: var(--color-ink-900);
   }
 
-  /* One visible focus treatment everywhere, so keyboard use never guesses. */
   :focus-visible {
     outline: 2px solid var(--color-sodium-500);
-    outline-offset: 2px;
-    border-radius: 1px;
+    outline-offset: 3px;
+    border-radius: 6px;
   }
 
   ::-webkit-scrollbar {
@@ -96,55 +113,112 @@
     height: 10px;
   }
   ::-webkit-scrollbar-track {
-    background: var(--color-ink-900);
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-ink-700);
-    border: 3px solid var(--color-ink-900);
+    background: rgba(244, 237, 242, 0.16);
+    border: 3px solid transparent;
+    background-clip: padding-box;
     border-radius: 99px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-ink-600);
+    background: rgba(244, 237, 242, 0.28);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+
+  input[type='range'] {
+    accent-color: var(--color-sodium-500);
   }
 }
 
 @layer components {
-  /* Numerals that hold their column: scores, durations, timecode. */
   .numeric {
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum' 1;
   }
 
-  /* The masthead label — small, wide-tracked, sits above a rule. */
   .eyebrow {
     font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
+    font-weight: 650;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--color-ink-400);
   }
 
-  .rule {
-    border-color: var(--color-ink-800);
+  /* The three glass weights. Keeping one material and varying only its size is
+     what makes the interface read as a single object rather than a collage. */
+  .glass {
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.028));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-glass);
+    box-shadow:
+      0 28px 70px -36px rgba(0, 0, 0, 0.85),
+      inset 0 1px 0 rgba(255, 255, 255, 0.075);
+    backdrop-filter: blur(20px) saturate(130%);
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
   }
 
-  /* Text input as a ruled line, not a box. Boxes everywhere is the tell of a
-     template; a ruled field reads like a form on paper. */
+  .glass-sm {
+    border-radius: var(--radius-panel);
+  }
+
+  .glass-xs {
+    border-radius: var(--radius-control);
+  }
+
+  .glass-quiet {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: var(--radius-panel);
+  }
+
+  .hairline {
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
   .field {
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid var(--color-ink-700);
-    padding: 0.625rem 0.125rem;
+    background: rgba(16, 14, 21, 0.52);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-control);
+    padding: 0.7rem 0.9rem;
     color: var(--color-ink-100);
     width: 100%;
-    transition: border-color 220ms var(--ease-out-quart);
+    transition:
+      border-color 200ms var(--ease-out-quart),
+      box-shadow 200ms var(--ease-out-quart),
+      background-color 200ms var(--ease-out-quart);
   }
   .field::placeholder {
-    color: var(--color-ink-600);
+    color: var(--color-ink-500);
+  }
+  .field:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.17);
   }
   .field:focus {
     outline: none;
-    border-bottom-color: var(--color-sodium-500);
+    border-color: rgba(255, 101, 168, 0.62);
+    box-shadow: 0 0 0 3px rgba(255, 101, 168, 0.13);
+  }
+  .field:disabled {
+    opacity: 0.55;
+  }
+  select.field {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--color-ink-400) 50%),
+      linear-gradient(135deg, var(--color-ink-400) 50%, transparent 50%);
+    background-position:
+      calc(100% - 18px) calc(50% - 2px),
+      calc(100% - 13px) calc(50% - 2px);
+    background-size:
+      5px 5px,
+      5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 2.4rem;
+  }
+  select.field option {
+    background: var(--color-ink-850);
+    color: var(--color-ink-100);
   }
 
   .btn {
@@ -152,57 +226,120 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    font-weight: 600;
+    border-radius: 999px;
+    font-weight: 650;
     font-size: 0.8125rem;
     letter-spacing: 0.01em;
-    padding: 0.5rem 1rem;
+    padding: 0.62rem 1.15rem;
     transition:
       background-color 180ms var(--ease-out-quart),
       color 180ms var(--ease-out-quart),
       border-color 180ms var(--ease-out-quart),
-      transform 180ms var(--ease-out-quart);
+      box-shadow 180ms var(--ease-out-quart),
+      transform 180ms var(--ease-out-quart),
+      filter 180ms var(--ease-out-quart);
   }
   .btn:active:not(:disabled) {
-    transform: translateY(1px);
+    transform: translateY(1px) scale(0.995);
   }
   .btn:disabled {
-    opacity: 0.4;
+    opacity: 0.38;
     cursor: not-allowed;
   }
 
   .btn-primary {
-    background: var(--color-sodium-500);
-    color: var(--color-ink-900);
+    background: linear-gradient(100deg, #ff65a8 0%, #ff8a9e 52%, #ff986a 100%);
+    color: #17151d;
+    box-shadow: 0 14px 34px -16px rgba(255, 101, 168, 0.85);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--color-sodium-400);
+    filter: brightness(1.06);
+    box-shadow: 0 18px 44px -16px rgba(255, 101, 168, 0.95);
   }
 
   .btn-ghost {
-    background: transparent;
-    color: var(--color-ink-200);
-    border: 1px solid var(--color-ink-700);
+    background: rgba(255, 255, 255, 0.055);
+    color: var(--color-ink-100);
+    border: 1px solid rgba(255, 255, 255, 0.12);
   }
   .btn-ghost:hover:not(:disabled) {
-    border-color: var(--color-ink-600);
-    color: var(--color-ink-100);
+    background: rgba(255, 255, 255, 0.095);
+    border-color: rgba(255, 255, 255, 0.2);
   }
 
   .btn-quiet {
     background: transparent;
     color: var(--color-ink-400);
-    padding-inline: 0.25rem;
+    padding-inline: 0.45rem;
   }
   .btn-quiet:hover:not(:disabled) {
     color: var(--color-sodium-400);
   }
+
+  .btn-danger {
+    background: rgba(255, 127, 141, 0.12);
+    border: 1px solid rgba(255, 127, 141, 0.32);
+    color: var(--color-signal-bad);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(255, 127, 141, 0.2);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.045);
+    padding: 0.32rem 0.72rem;
+    font-size: 0.72rem;
+    color: var(--color-ink-300);
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
+    flex: none;
+  }
+
+  .glass-link {
+    border-radius: var(--radius-panel);
+    border: 1px solid transparent;
+    transition:
+      background-color 200ms var(--ease-out-quart),
+      border-color 200ms var(--ease-out-quart),
+      transform 200ms var(--ease-out-quart);
+  }
+  .glass-link:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.09);
+  }
+
+  .display {
+    font-family: var(--font-sans);
+    font-weight: 760;
+    font-stretch: 94%;
+    letter-spacing: -0.045em;
+    line-height: 0.92;
+  }
+
+  .serif-accent {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+  }
 }
 
-/* Page load: a single orchestrated stagger beats scattered micro-animations. */
+/* One orchestrated entrance. Scattered micro-animations read as noise. */
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -214,18 +351,38 @@
   animation: rise 620ms var(--ease-out-expo) both;
 }
 
-@keyframes sweep {
-  from {
-    transform: scaleX(0);
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 101, 168, 0.45);
   }
-  to {
-    transform: scaleX(1);
+  70% {
+    box-shadow: 0 0 0 7px rgba(255, 101, 168, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 101, 168, 0);
   }
 }
 
-.sweep {
-  transform-origin: left;
-  animation: sweep 900ms var(--ease-out-expo) both;
+.pulse-dot {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 33%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  animation: shimmer 1.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

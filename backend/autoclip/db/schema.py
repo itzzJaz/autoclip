@@ -104,9 +104,45 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
     conn.executescript(_V1)
 
 
+_V2 = """
+CREATE TABLE publish_jobs (
+    id             TEXT PRIMARY KEY,
+    export_id      TEXT NOT NULL REFERENCES exports(id) ON DELETE CASCADE,
+    title          TEXT NOT NULL DEFAULT '',
+    description    TEXT NOT NULL DEFAULT '',
+    hashtags_json  TEXT NOT NULL DEFAULT '[]',
+    tags_json      TEXT NOT NULL DEFAULT '[]',
+    privacy        TEXT NOT NULL DEFAULT 'private'
+                   CHECK (privacy IN ('private','unlisted','public')),
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending','uploading','processing','published','failed')),
+    progress       REAL NOT NULL DEFAULT 0,
+    video_id       TEXT,
+    url            TEXT,
+    error          TEXT,
+    attempts       INTEGER NOT NULL DEFAULT 0,
+    thumbnail_path TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    published_at   TEXT
+);
+CREATE INDEX idx_publish_status ON publish_jobs(status, created_at);
+-- One row per export. Retrying a failed upload updates this row; it never
+-- creates a second upload of the same file, which is what keeps the queue from
+-- publishing a clip twice.
+CREATE UNIQUE INDEX idx_publish_export ON publish_jobs(export_id);
+
+CREATE INDEX idx_exports_created ON exports(created_at DESC);
+"""
+
+
+def _migration_v2(conn: sqlite3.Connection) -> None:
+    conn.executescript(_V2)
+
+
 #: Ordered migrations. Index + 1 is the resulting ``user_version``.
 #: Append only — never edit a migration that has shipped.
-MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_migration_v1]
+MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_migration_v1, _migration_v2]
 
 SCHEMA_VERSION = len(MIGRATIONS)
 

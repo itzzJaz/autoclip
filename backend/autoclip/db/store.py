@@ -18,6 +18,9 @@ from .models import (
     Export,
     Job,
     JobStatus,
+    Privacy,
+    PublishJob,
+    PublishStatus,
     Source,
     Transcript,
     utcnow,
@@ -270,6 +273,35 @@ def replace_clips(job_id: str, clips: list[Clip]) -> list[Clip]:
     return clips
 
 
+def create_clip(clip: Clip) -> Clip:
+    """Persist one user-created clip."""
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO clips (id, job_id, rank, start_s, end_s, start_word, end_word,
+                               title, hook, score, reason, status, user_trimmed, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                clip.id,
+                clip.job_id,
+                clip.rank,
+                clip.start_s,
+                clip.end_s,
+                clip.start_word,
+                clip.end_word,
+                clip.title,
+                clip.hook,
+                clip.score,
+                clip.reason,
+                clip.status,
+                int(clip.user_trimmed),
+                clip.created_at,
+            ),
+        )
+    return clip
+
+
 def get_clip(clip_id: str) -> Clip | None:
     with connection() as conn:
         row = conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
@@ -391,3 +423,134 @@ def list_exports(clip_id: str) -> list[Export]:
             "SELECT * FROM exports WHERE clip_id = ? ORDER BY created_at DESC", (clip_id,)
         ).fetchall()
     return [Export.from_row(r) for r in rows]
+
+
+def list_all_exports(limit: int = 100) -> list[Export]:
+    """Every export, newest first — the export-history feed."""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM exports ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [Export.from_row(r) for r in rows]
+
+
+# --------------------------------------------------------------------------
+# Publishing
+# --------------------------------------------------------------------------
+
+
+def create_publish_job(job: PublishJob) -> PublishJob:
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO publish_jobs (id, export_id, title, description,
+                                      hashtags_json, tags_json, privacy, status,
+                                      progress, video_id, url, error, attempts,
+                                      thumbnail_path, created_at, updated_at,
+                                      published_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job.id,
+                job.export_id,
+                job.title,
+                job.description,
+                json.dumps(job.hashtags),
+                json.dumps(job.tags),
+                job.privacy,
+                job.status,
+                job.progress,
+                job.video_id,
+                job.url,
+                job.error,
+                job.attempts,
+                job.thumbnail_path,
+                job.created_at,
+                job.updated_at,
+                job.published_at,
+            ),
+        )
+    return job
+
+
+def get_publish_job(job_id: str) -> PublishJob | None:
+    with connection() as conn:
+        row = conn.execute("SELECT * FROM publish_jobs WHERE id = ?", (job_id,)).fetchone()
+    return PublishJob.from_row(row) if row else None
+
+
+def get_publish_job_for_export(export_id: str) -> PublishJob | None:
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM publish_jobs WHERE export_id = ?", (export_id,)
+        ).fetchone()
+    return PublishJob.from_row(row) if row else None
+
+
+def list_publish_jobs(limit: int = 100) -> list[PublishJob]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM publish_jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [PublishJob.from_row(r) for r in rows]
+
+
+def next_pending_publish_job() -> PublishJob | None:
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM publish_jobs WHERE status = 'pending' "
+            "ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+    return PublishJob.from_row(row) if row else None
+
+
+def update_publish_job(
+    job_id: str,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    hashtags: list[str] | None = None,
+    tags: list[str] | None = None,
+    privacy: Privacy | None = None,
+    status: PublishStatus | None = None,
+    progress: float | None = None,
+    video_id: str | None = None,
+    url: str | None = None,
+    error: str | None | _Unset = UNSET,
+    attempts: int | None = None,
+    thumbnail_path: str | None = None,
+    published_at: str | None | _Unset = UNSET,
+) -> None:
+    fields: dict[str, Any] = {"updated_at": utcnow()}
+    for name, value in (
+        ("title", title),
+        ("description", description),
+        ("privacy", privacy),
+        ("status", status),
+        ("progress", progress),
+        ("video_id", video_id),
+        ("url", url),
+        ("attempts", attempts),
+        ("thumbnail_path", thumbnail_path),
+    ):
+        if value is not None:
+            fields[name] = value
+    if hashtags is not None:
+        fields["hashtags_json"] = json.dumps(hashtags)
+    if tags is not None:
+        fields["tags_json"] = json.dumps(tags)
+    for name, value in (("error", error), ("published_at", published_at)):
+        if not isinstance(value, _Unset):
+            fields[name] = value
+
+    assignments = ", ".join(f"{name} = ?" for name in fields)
+    with connection() as conn:
+        conn.execute(
+            f"UPDATE publish_jobs SET {assignments} WHERE id = ?",
+            (*fields.values(), job_id),
+        )
+
+
+def delete_publish_job(job_id: str) -> None:
+    with connection() as conn:
+        conn.execute("DELETE FROM publish_jobs WHERE id = ?", (job_id,))

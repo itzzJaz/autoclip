@@ -147,6 +147,13 @@ export interface Settings {
     crf: number
     write_srt: boolean
   }
+  publish: {
+    default_privacy: 'private' | 'unlisted' | 'public'
+    description_style: 'concise' | 'story' | 'educational'
+    default_hashtags: string
+    default_tags: string
+    hashtags_in_description: boolean
+  }
   insecure_secret_storage: boolean
   keys_present: Record<string, boolean>
 }
@@ -162,6 +169,121 @@ export interface SystemStatus {
   gpu_name: string | null
   compute_type: string
   diarization_available: boolean
+}
+
+export type EngineState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
+
+export interface EngineStatus {
+  state: EngineState
+  error: string | null
+  model: string
+  model_loaded: string | null
+  started_at: string | null
+  active_job_id: string | null
+  queued: number
+  ffmpeg_version: string | null
+  ready: boolean
+}
+
+export type PublishStatus = 'pending' | 'uploading' | 'processing' | 'published' | 'failed'
+export type Privacy = 'private' | 'unlisted' | 'public'
+
+export interface PublishRecord {
+  id: string
+  export_id: string
+  title: string
+  description: string
+  hashtags: string[]
+  tags: string[]
+  privacy: Privacy
+  status: PublishStatus
+  progress: number
+  video_id: string | null
+  url: string | null
+  error: string | null
+  attempts: number
+  created_at: string
+  updated_at: string
+  published_at: string | null
+  thumbnail_url: string | null
+  download_url: string | null
+}
+
+export interface ValidationCheck {
+  key: string
+  label: string
+  ok: boolean
+  severity: 'error' | 'warn' | 'info'
+  detail: string
+}
+
+export interface ValidationReport {
+  ok: boolean
+  duration_s: number
+  width: number | null
+  height: number | null
+  fps: number | null
+  has_audio: boolean
+  video_codec: string | null
+  frozen_opening_s: number
+  checks: ValidationCheck[]
+  errors: ValidationCheck[]
+  warnings: ValidationCheck[]
+}
+
+export interface ExportDetail {
+  id: string
+  clip_id: string
+  job_id: string | null
+  title: string
+  hook: string
+  filename: string
+  duration_s: number
+  ratio: string
+  style: string
+  size_bytes: number
+  created_at: string
+  download_url: string
+  thumbnail_url: string
+  preview_url: string
+  publish: PublishRecord | null
+  validation: ValidationReport | null
+}
+
+export interface GeneratedMetadata {
+  titles: string[]
+  recommended_title: string
+  description: string
+  hashtags: string[]
+  tags: string[]
+  generated_by: string
+  warning: string
+  notes: string[]
+}
+
+export interface PublishingStatus {
+  configured: boolean
+  connected: boolean
+  redirect_uri: string
+  client_project: string
+  client_source: string
+  configured_redirect_uris: string[]
+  scopes: string[]
+  expires_at: number | null
+  has_refresh_token: boolean
+  warnings: string[]
+  detail: string
+  hint: string
+}
+
+export interface PublishDraft {
+  title: string
+  description: string
+  hashtags: string[]
+  tags: string[]
+  privacy: Privacy
+  confirm: boolean
+  confirm_public: boolean
 }
 
 export interface JobSettingsOverrides {
@@ -255,6 +377,11 @@ export const api = {
 
   listClips: (jobId: string) => request<Clip[]>(`/api/jobs/${jobId}/clips`),
   getClip: (clipId: string) => request<Clip>(`/api/clips/${clipId}`),
+  createManualClip: (jobId: string, startS: number, endS: number, title: string) =>
+    request<Clip>(`/api/jobs/${jobId}/clips`, {
+      method: 'POST',
+      body: JSON.stringify({ start_s: startS, end_s: endS, title }),
+    }),
 
   getCropPath: (clipId: string) => request<CropPath>(`/api/clips/${clipId}/crop-path`),
   getClipWords: (clipId: string) => request<Word[]>(`/api/clips/${clipId}/words`),
@@ -281,6 +408,48 @@ export const api = {
 
   captionStyles: () => request<CaptionStyle[]>('/api/caption-styles'),
   providerStatus: () => request<ProviderStatus[]>('/api/providers/status'),
+
+  engineStatus: () => request<EngineStatus>('/api/engine'),
+  startEngine: () => request<EngineStatus>('/api/engine/start', { method: 'POST' }),
+  stopEngine: (force = false) =>
+    request<EngineStatus>('/api/engine/stop', {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    }),
+
+  listExports: (limit = 100) => request<ExportDetail[]>(`/api/exports?limit=${limit}`),
+  getExport: (exportId: string, validate = true) =>
+    request<ExportDetail>(`/api/exports/${exportId}?validate=${validate}`),
+
+  generateMetadata: (
+    exportId: string,
+    body: { style?: string; extra_context?: string } = {},
+  ) =>
+    request<GeneratedMetadata>(`/api/exports/${exportId}/metadata`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  publishExport: (exportId: string, draft: PublishDraft) =>
+    request<PublishRecord>(`/api/exports/${exportId}/publish`, {
+      method: 'POST',
+      body: JSON.stringify(draft),
+    }),
+
+  publishingStatus: () => request<PublishingStatus>('/api/publishing/status'),
+  startYouTubeAuth: () =>
+    request<{ auth_url: string; redirect_uri: string; state: string }>(
+      '/api/publishing/auth/start',
+      { method: 'POST' },
+    ),
+  disconnectYouTube: () =>
+    request<void>('/api/publishing/auth/disconnect', { method: 'POST' }),
+  publishingQueue: (limit = 100) =>
+    request<PublishRecord[]>(`/api/publishing/queue?limit=${limit}`),
+  retryPublish: (jobId: string) =>
+    request<PublishRecord>(`/api/publishing/queue/${jobId}/retry`, { method: 'POST' }),
+
+  exportThumbnailUrl: (exportId: string) => `/api/exports/${exportId}/thumbnail`,
 
   getSettings: () => request<Settings>('/api/settings'),
   putSettings: (patch: Partial<Settings>) =>

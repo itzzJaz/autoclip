@@ -156,6 +156,17 @@ class LLMProvider(ABC):
 
     # -- shared behaviour --------------------------------------------------
 
+    async def complete_text(
+        self, system: str, user: str, config: DetectionConfig | None = None
+    ) -> str:
+        """One raw completion, for callers that are not clip detection.
+
+        Publishing metadata uses the same provider plumbing but a different
+        schema; exposing the single primitive keeps that module from reaching
+        into ``_complete`` directly.
+        """
+        return await self._complete(system, user, config or DetectionConfig())
+
     async def detect_highlights(
         self, window: TranscriptWindow, config: DetectionConfig
     ) -> ClipCandidates:
