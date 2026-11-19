@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="AutoClip",
+        title="M-CLIP",
         version=__version__,
         description="Local-first AI video clipper.",
         lifespan=lifespan,

@@ -238,15 +238,23 @@ def _clean_description(value: str) -> str:
 
 def _clean_hashtags(values: list[str], defaults: list[str]) -> list[str]:
     seen: list[str] = []
-    for raw in [*values, *defaults]:
-        for piece in re.split(r"[\s,]+", raw or ""):
-            tag = piece.strip().lstrip("#")
-            tag = re.sub(r"[^\w]", "", tag, flags=re.UNICODE)
-            if not tag:
-                continue
-            candidate = f"#{tag}"
-            if candidate.lower() not in {item.lower() for item in seen}:
-                seen.append(candidate)
+    for source_index, source in enumerate((values, defaults)):
+        for raw in source:
+            for piece in re.split(r"[,]+", raw or ""):
+                piece = piece.strip()
+                if not piece:
+                    continue
+                if re.search(r"\s", piece):
+                    piece = piece.split()[0]
+                tag = piece.lstrip("#")
+                tag = re.sub(r"[^\w]", "", tag, flags=re.UNICODE)
+                if not tag:
+                    continue
+                if source_index == 1 or not piece.startswith("#"):
+                    tag = tag.lower()
+                candidate = f"#{tag}"
+                if candidate.lower() not in {item.lower() for item in seen}:
+                    seen.append(candidate)
     return seen
 
 

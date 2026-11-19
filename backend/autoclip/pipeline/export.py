@@ -125,9 +125,27 @@ def build_video_filtergraph(
     subtitle_name: str | None,
     fonts_name: str = "fonts",
     fps: float = 30.0,
+    has_video: bool = True,
 ) -> str:
     """Build the ``-filter_complex`` video chain for one clip."""
     out_w, out_h = ratio_dimensions(request.ratio)
+    if not has_video:
+        duration = max(0.1, request.end_s - request.start_s)
+        parts = [
+            (
+                f"color=c=0x17151d:s={out_w}x{out_h}:"
+                f"r={fps:g}:d={duration:.4f},format=yuv420p[v0]"
+            )
+        ]
+        current = "[v0]"
+        if request.burn_captions and subtitle_name is not None:
+            parts.append(
+                f"{current}ass=filename={subtitle_name}:fontsdir={fonts_name}[vout]"
+            )
+        else:
+            parts.append(f"{current}null[vout]")
+        return ";".join(parts)
+
     segments = request.crop_path.segments
     if not segments:
         raise ExportError("The crop path has no segments.")
@@ -236,7 +254,19 @@ def encoder_args(settings: ExportSettings) -> list[str]:
     rather than ``-crf``, and the two scales are close enough that reusing the
     configured value keeps output consistent between machines.
     """
-    if settings.prefer_hardware_encoder and report().ffmpeg.nvenc_works:
+    ffmpeg_info = report().ffmpeg
+    if settings.prefer_hardware_encoder and ffmpeg_info.videotoolbox_works:
+        return [
+            "-c:v",
+            "h264_videotoolbox",
+            "-realtime",
+            "true",
+            "-q:v",
+            str(max(20, min(70, settings.crf))),
+            "-profile:v",
+            "high",
+        ]
+    if settings.prefer_hardware_encoder and ffmpeg_info.nvenc_works:
         return [
             "-c:v",
             "h264_nvenc",
@@ -323,7 +353,11 @@ def export_clip(
             )
 
         filtergraph = build_video_filtergraph(
-            request, subtitle_name=subtitle_name, fonts_name=fonts_name, fps=fps
+            request,
+            subtitle_name=subtitle_name,
+            fonts_name=fonts_name,
+            fps=fps,
+            has_video=source_info.has_video,
         )
 
         request.destination.parent.mkdir(parents=True, exist_ok=True)

@@ -251,7 +251,7 @@ export function Settings() {
           />
           <span>
             Use GPU encoding when available
-            {system && !system.nvenc_works && (
+            {system && !system.nvenc_works && !system.videotoolbox_works && (
               <span className="mt-1 block text-xs text-ink-500">
                 Not usable on this machine — exports will use the CPU encoder. Same quality,
                 slower.
@@ -350,7 +350,16 @@ export function Settings() {
             <Row label="Acceleration" value={system.accel.toUpperCase()} />
             <Row label="Device" value={system.gpu_name ?? '—'} />
             <Row label="Whisper compute" value={system.compute_type} />
-            <Row label="GPU encode" value={system.nvenc_works ? 'available' : 'unavailable'} />
+            <Row
+              label="GPU encode"
+              value={
+                system.videotoolbox_works
+                  ? 'Apple VideoToolbox'
+                  : system.nvenc_works
+                    ? 'NVENC'
+                    : 'unavailable'
+              }
+            />
             <Row label="Captions" value={system.has_libass ? 'libass present' : 'libass missing'} />
           </dl>
         </Section>

@@ -26,6 +26,8 @@ log = logging.getLogger(__name__)
 #: managing playlists, and listing videos all need broader scopes that a clipper
 #: has no business asking for.
 UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
+PUBLISHING_SCOPES = f"{UPLOAD_SCOPE} {READONLY_SCOPE}"
 
 CLIENT_ENV = "AUTOCLIP_YOUTUBE_CLIENT_SECRET"
 REDIRECT_ENV = "AUTOCLIP_OAUTH_REDIRECT_URI"
@@ -92,7 +94,7 @@ class StoredToken:
                 payload.get("refresh_token") or (previous.refresh_token if previous else "")
             ),
             expires_at=expires_at,
-            scope=str(payload.get("scope") or (previous.scope if previous else UPLOAD_SCOPE)),
+            scope=str(payload.get("scope") or (previous.scope if previous else PUBLISHING_SCOPES)),
             token_type=str(payload.get("token_type") or "Bearer"),
         )
 
@@ -232,6 +234,17 @@ def token_summary() -> dict[str, Any]:
         "expires_at": token.expires_at,
         "has_refresh_token": bool(token.refresh_token),
     }
+
+
+def has_analytics_scope() -> bool:
+    """Whether the stored token can read owned-channel video statistics."""
+    summary = token_summary()
+    scopes = set(summary.get("scopes") or [])
+    if READONLY_SCOPE in scopes:
+        return True
+    # Google's token response can compact scopes or preserve a broader YouTube
+    # scope. Any broad YouTube scope is stronger than read-only for this call.
+    return any(scope.endswith("/youtube") or scope.endswith("/youtubepartner") for scope in scopes)
 
 
 def default_redirect_uri(port: int | None = None) -> str:

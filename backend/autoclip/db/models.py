@@ -174,6 +174,7 @@ class ClipEdit:
     edited_words: list[dict[str, Any]] | None = None
     caption_style: str = "bold_pop"
     ratio: str = "9:16"
+    caption_scale: float = 1.0
     updated_at: str = field(default_factory=utcnow)
 
     @classmethod
@@ -184,6 +185,7 @@ class ClipEdit:
             edited_words=json.loads(raw) if raw else None,
             caption_style=row["caption_style"],
             ratio=row["ratio"],
+            caption_scale=float(row["caption_scale"]) if "caption_scale" in row.keys() else 1.0,
             updated_at=row["updated_at"],
         )
 
@@ -259,6 +261,37 @@ class PublishJob:
             error=row["error"],
             attempts=row["attempts"],
             thumbnail_path=row["thumbnail_path"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            published_at=row["published_at"],
+        )
+
+
+@dataclass
+class InstagramJob:
+    id: str
+    export_id: str
+    caption: str = ""
+    status: Literal["pending", "processing", "published", "failed"] = "pending"
+    container_id: str | None = None
+    media_id: str | None = None
+    url: str | None = None
+    error: str | None = None
+    created_at: str = field(default_factory=utcnow)
+    updated_at: str = field(default_factory=utcnow)
+    published_at: str | None = None
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> InstagramJob:
+        return cls(
+            id=row["id"],
+            export_id=row["export_id"],
+            caption=row["caption"],
+            status=row["status"],
+            container_id=row["container_id"],
+            media_id=row["media_id"],
+            url=row["url"],
+            error=row["error"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             published_at=row["published_at"],

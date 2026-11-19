@@ -23,6 +23,7 @@ from urllib.parse import urlencode
 import httpx
 
 from .credentials import (
+    PUBLISHING_SCOPES,
     UPLOAD_SCOPE,
     CredentialsError,
     OAuthClient,
@@ -86,7 +87,7 @@ def begin(redirect_uri: str) -> tuple[str, str]:
             "client_id": client.client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": UPLOAD_SCOPE,
+            "scope": PUBLISHING_SCOPES,
             "access_type": "offline",
             "include_granted_scopes": "true",
             "prompt": "consent",

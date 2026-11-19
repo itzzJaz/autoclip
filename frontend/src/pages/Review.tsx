@@ -77,6 +77,51 @@ export function Review() {
     }
   }
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (
+        target?.matches('input, textarea, select, [contenteditable="true"]') ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      ) {
+        return
+      }
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        const index = clips.findIndex((clip) => clip.id === selectedId)
+        if (clips.length > 0) {
+          setSelectedId(clips[Math.min(index + 1, clips.length - 1)]?.id ?? clips[0].id)
+        }
+      }
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        const index = clips.findIndex((clip) => clip.id === selectedId)
+        if (clips.length > 0) {
+          setSelectedId(clips[Math.max(index - 1, 0)]?.id ?? clips[0].id)
+        }
+      }
+      if (selected && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        void setStatus(
+          selected,
+          selected.status === 'kept' ? 'candidate' : 'kept',
+        )
+      }
+      if (selected && event.key.toLowerCase() === 'd') {
+        event.preventDefault()
+        void setStatus(
+          selected,
+          selected.status === 'discarded' ? 'candidate' : 'discarded',
+        )
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [clips, selected, selectedId])
+
   const commitTrim = async (start: number, end: number) => {
     if (!selected) return
     try {
@@ -116,11 +161,19 @@ export function Review() {
     }
   }
 
+  const setCaptionScale = async (clip: Clip, captionScale: number) => {
+    try {
+      patchClip(await api.patchCaptions(clip.id, { caption_scale: captionScale }))
+    } catch (err) {
+      setError(err as Error)
+    }
+  }
+
   const exportClip = async (clip: Clip) => {
     setExporting((current) => new Set(current).add(clip.id))
     setError(null)
     try {
-      await api.exportClip(clip.id, clip.ratio, clip.caption_style)
+      await api.exportClip(clip.id, clip.ratio, clip.caption_style, clip.caption_scale)
       patchClip(await api.getClip(clip.id))
     } catch (err) {
       setError(err as Error)
@@ -247,6 +300,7 @@ export function Review() {
                   style={activeStyle}
                   ratio={selected.ratio}
                   cropPath={cropPath}
+                  captionScale={selected.caption_scale}
                 />
                 <div className="mt-5 border-t border-white/10 pt-4">
                   <TrimBar
@@ -337,6 +391,27 @@ export function Review() {
                         {ratio}
                       </button>
                     ))}
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="flex items-baseline justify-between">
+                      <span className="eyebrow">Caption size</span>
+                      <span className="numeric text-[11px] text-sodium-400">
+                        {Math.round(selected.caption_scale * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.7}
+                      max={1.8}
+                      step={0.05}
+                      value={selected.caption_scale}
+                      onChange={(event) =>
+                        void setCaptionScale(selected, Number(event.target.value))
+                      }
+                      className="mt-3 h-1 w-full"
+                      aria-label="Caption font size"
+                    />
                   </div>
                 </div>
 
@@ -538,9 +613,22 @@ function ManualClipModal({
     startS >= 0 &&
     (durationS <= 0 || endS <= durationS)
 
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [onClose])
+
   return (
     <div
-      className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-ink-900/75 p-4 backdrop-blur-xl"
+      className="fixed inset-0 z-[80] grid overflow-y-auto bg-ink-900/90 p-2 backdrop-blur-xl sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Create a manual clip"
@@ -548,7 +636,7 @@ function ManualClipModal({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="glass w-full max-w-4xl p-4 sm:p-6">
+      <div className="glass m-auto h-[calc(100dvh-1rem)] w-full max-w-[1500px] overflow-y-auto p-3 sm:h-[calc(100dvh-2rem)] sm:p-5">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow">Manual selection</p>
@@ -559,16 +647,19 @@ function ManualClipModal({
           </button>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(18rem,22rem)_1fr]">
-          <ClipPlayer
-            src={api.mediaUrl(jobId)}
-            startS={startS}
-            endS={endS}
-            words={[]}
-            style={undefined}
-            ratio="9:16"
-            cropPath={null}
-          />
+        <div className="grid h-[calc(100%-4.5rem)] gap-5 lg:grid-cols-[minmax(22rem,1fr)_minmax(18rem,26rem)]">
+          <div className="grid min-h-[420px] place-items-center overflow-hidden rounded-[16px] border border-white/[0.07] bg-ink-900/50 p-2">
+            <ClipPlayer
+              src={api.mediaUrl(jobId)}
+              startS={startS}
+              endS={endS}
+              words={[]}
+              style={undefined}
+              ratio="9:16"
+              cropPath={null}
+              maxHeightVh={78}
+            />
+          </div>
 
           <div className="glass-quiet h-fit p-4 sm:p-5">
             <label className="block">
@@ -591,7 +682,11 @@ function ManualClipModal({
                   max={durationS > 0 ? durationS : undefined}
                   step={0.1}
                   value={startS}
-                  onChange={(event) => setStartS(Math.max(0, Number(event.target.value) || 0))}
+                  onChange={(event) =>
+                    setStartS(
+                      Math.max(0, Math.min(Number(event.target.value) || 0, endS - 0.1)),
+                    )
+                  }
                 />
               </label>
               <label className="block">
@@ -603,7 +698,17 @@ function ManualClipModal({
                   max={durationS > 0 ? durationS : undefined}
                   step={0.1}
                   value={endS}
-                  onChange={(event) => setEndS(Math.max(0.1, Number(event.target.value) || 0.1))}
+                  onChange={(event) =>
+                    setEndS(
+                      Math.max(
+                        startS + 0.1,
+                        Math.min(
+                          Number(event.target.value) || 0.1,
+                          durationS > 0 ? durationS : Number.MAX_SAFE_INTEGER,
+                        ),
+                      ),
+                    )
+                  }
                 />
               </label>
             </div>
@@ -617,20 +722,32 @@ function ManualClipModal({
               <input
                 type="range"
                 min={0}
-                max={durationS > 0 ? durationS : endS}
+                max={Math.max(0, Math.min(durationS > 0 ? durationS : endS, endS))}
                 step={0.1}
                 value={startS}
-                onChange={(event) => setStartS(Number(event.target.value))}
+                onChange={(event) =>
+                  setStartS(Math.min(Number(event.target.value), endS - 0.1))
+                }
                 className="mt-3 h-1 w-full"
                 aria-label="Clip start time"
               />
               <input
                 type="range"
-                min={0}
+                min={Math.max(0, startS)}
                 max={durationS > 0 ? durationS : endS}
                 step={0.1}
                 value={endS}
-                onChange={(event) => setEndS(Number(event.target.value))}
+                onChange={(event) =>
+                  setEndS(
+                    Math.max(
+                      startS + 0.1,
+                      Math.min(
+                        Number(event.target.value),
+                        durationS > 0 ? durationS : Number.MAX_SAFE_INTEGER,
+                      ),
+                    ),
+                  )
+                }
                 className="mt-3 h-1 w-full"
                 aria-label="Clip end time"
               />

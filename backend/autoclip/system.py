@@ -84,6 +84,9 @@ class FFmpegInfo:
     nvenc_works: bool = False
     #: Why nvenc is unusable, when it is listed but doesn't work.
     nvenc_error: str = ""
+    has_videotoolbox: bool = False
+    videotoolbox_works: bool = False
+    videotoolbox_error: str = ""
     filters: set[str] = field(default_factory=set)
     ffprobe_found: bool = False
 
@@ -208,6 +211,9 @@ def probe_ffmpeg() -> FFmpegInfo:
     info.has_nvenc = "h264_nvenc" in encoders
     if info.has_nvenc:
         info.nvenc_works, info.nvenc_error = _probe_nvenc(exe)
+    info.has_videotoolbox = "h264_videotoolbox" in encoders
+    if info.has_videotoolbox:
+        info.videotoolbox_works, info.videotoolbox_error = _probe_videotoolbox(exe)
 
     filters = _run([exe, "-hide_banner", "-filters"])
     # Filter listing rows look like: " ... crop   V->V   Crop the input video."
@@ -254,12 +260,39 @@ def _probe_nvenc(exe: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _probe_videotoolbox(exe: str) -> tuple[bool, str]:
+    """Encode one frame with Apple's H.264 hardware encoder."""
+    output = _run(
+        [
+            exe,
+            "-hide_banner",
+            "-nostdin",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=256x256:d=0.1",
+            "-c:v",
+            "h264_videotoolbox",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
+    lowered = output.lower()
+    if "error" in lowered or "not supported" in lowered or "cannot" in lowered:
+        return False, "Apple VideoToolbox initialisation failed."
+    return True, ""
+
+
 def probe_gpu() -> GPUInfo:
     info = GPUInfo()
 
     if sys.platform == "darwin" and platform.machine() == "arm64":
         info.accel = "mps"
-        info.name = platform.processor() or "Apple Silicon"
+        output = _run(["sysctl", "-n", "machdep.cpu.brand_string"]).strip()
+        info.name = output or "Apple Silicon"
         return info
 
     if shutil.which("nvidia-smi"):

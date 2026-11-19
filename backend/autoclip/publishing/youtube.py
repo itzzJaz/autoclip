@@ -303,5 +303,40 @@ def processing_status(video_id: str) -> dict[str, Any]:
     }
 
 
+def video_statistics(video_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Fetch public/private video statistics for published uploads."""
+    ids = [video_id for video_id in dict.fromkeys(video_ids) if video_id]
+    if not ids:
+        return {}
+
+    token = oauth.access_token()
+    params = {"part": "snippet,statistics,status", "id": ",".join(ids[:50])}
+    response = httpx.get(API_URL, headers=_headers(token), params=params, timeout=30.0)
+    if response.status_code == 401:
+        token = oauth.access_token(force_refresh=True)
+        response = httpx.get(API_URL, headers=_headers(token), params=params, timeout=30.0)
+    if response.status_code >= 400:
+        raise YouTubeError(
+            f"Could not read YouTube statistics (HTTP {response.status_code}).",
+            hint=_error_detail(response),
+        )
+
+    result: dict[str, dict[str, Any]] = {}
+    for item in (response.json() or {}).get("items") or []:
+        video_id = str(item.get("id") or "")
+        snippet = item.get("snippet") or {}
+        stats = item.get("statistics") or {}
+        status = item.get("status") or {}
+        result[video_id] = {
+            "title": snippet.get("title") or "",
+            "published_at": snippet.get("publishedAt") or "",
+            "views": int(stats.get("viewCount") or 0),
+            "likes": int(stats.get("likeCount") or 0),
+            "comments": int(stats.get("commentCount") or 0),
+            "privacy": status.get("privacyStatus") or "",
+        }
+    return result
+
+
 def watch_url(video_id: str) -> str:
     return f"https://www.youtube.com/shorts/{video_id}"

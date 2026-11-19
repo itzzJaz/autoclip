@@ -140,9 +140,47 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
     conn.executescript(_V2)
 
 
+def _migration_v3(conn: sqlite3.Connection) -> None:
+    columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(clip_edits)").fetchall()
+    }
+    if "caption_scale" not in columns:
+        conn.execute(
+            "ALTER TABLE clip_edits ADD COLUMN caption_scale REAL NOT NULL DEFAULT 1.0"
+        )
+
+
+def _migration_v4(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+CREATE TABLE instagram_jobs (
+    id             TEXT PRIMARY KEY,
+    export_id      TEXT NOT NULL REFERENCES exports(id) ON DELETE CASCADE,
+    caption        TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending','processing','published','failed')),
+    container_id   TEXT,
+    media_id       TEXT,
+    url            TEXT,
+    error          TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    published_at   TEXT
+);
+CREATE INDEX idx_instagram_status ON instagram_jobs(status, created_at);
+CREATE UNIQUE INDEX idx_instagram_export ON instagram_jobs(export_id);
+"""
+    )
+
+
 #: Ordered migrations. Index + 1 is the resulting ``user_version``.
 #: Append only — never edit a migration that has shipped.
-MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_migration_v1, _migration_v2]
+MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
+    _migration_v1,
+    _migration_v2,
+    _migration_v3,
+    _migration_v4,
+]
 
 SCHEMA_VERSION = len(MIGRATIONS)
 

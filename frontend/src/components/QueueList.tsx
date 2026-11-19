@@ -109,7 +109,7 @@ export function QueueList({
               {job.status === 'uploading' && (
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-sodium-500 to-sodium-600 transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                    className="h-full rounded-full bg-sodium-500 transition-[width] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
                     style={{ width: `${Math.max(2, Math.round(job.progress * 100))}%` }}
                   />
                 </div>

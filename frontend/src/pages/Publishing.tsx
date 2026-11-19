@@ -7,6 +7,7 @@ import {
   formatBytes,
   formatDuration,
   type ExportDetail,
+  type PublishingAnalytics,
   type PublishRecord,
   type PublishingStatus,
   type Settings,
@@ -24,12 +25,14 @@ export function Publishing() {
   const [exports, setExports] = useState<ExportDetail[] | null>(null)
   const [queue, setQueue] = useState<PublishRecord[]>([])
   const [status, setStatus] = useState<PublishingStatus | null>(null)
+  const [analytics, setAnalytics] = useState<PublishingAnalytics | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [notice, setNotice] = useState('')
   const [filter, setFilter] = useState<'all' | 'unpublished' | 'published'>('all')
+  const [deleting, setDeleting] = useState<Set<string>>(new Set())
 
   const callbackHandled = useRef(false)
 
@@ -58,15 +61,26 @@ export function Publishing() {
     }
   }, [])
 
+  const loadAnalytics = useCallback(async () => {
+    try {
+      setAnalytics(await api.publishingAnalytics())
+    } catch (err) {
+      setAnalytics(null)
+      if ((err as ApiError).status === 403) return
+      setError(err as Error)
+    }
+  }, [])
+
   useEffect(() => {
     void loadExports()
     void loadQueue()
     void loadStatus()
+    void loadAnalytics()
     api
       .getSettings()
       .then(setSettings)
       .catch(() => undefined)
-  }, [loadExports, loadQueue, loadStatus])
+  }, [loadExports, loadQueue, loadStatus, loadAnalytics])
 
   // OAuth returns to /publishing?connected=1 or ?error=…; show it once, then
   // strip the params so a refresh does not replay a stale banner.
@@ -79,6 +93,7 @@ export function Publishing() {
     if (connected) {
       setNotice('YouTube connected. Private is still the default for every upload.')
       void loadStatus()
+      void loadAnalytics()
     } else if (oauthError) {
       setError(new ApiError(oauthError, 400))
     }
@@ -86,7 +101,7 @@ export function Publishing() {
     next.delete('connected')
     next.delete('error')
     setParams(next, { replace: true })
-  }, [params, setParams, loadStatus])
+  }, [params, setParams, loadStatus, loadAnalytics])
 
   const hasInFlight = queue.some((job) => IN_FLIGHT.includes(job.status))
 
@@ -138,7 +153,7 @@ export function Publishing() {
   }
 
   const disconnect = async () => {
-    if (!window.confirm('Disconnect YouTube? AutoClip will forget the stored token.')) return
+    if (!window.confirm('Disconnect YouTube? M-CLIP will forget the stored token.')) return
     setDisconnecting(true)
     try {
       await api.disconnectYouTube()
@@ -160,6 +175,36 @@ export function Publishing() {
     )
   }
 
+  const deleteLocalExport = async (record: ExportDetail) => {
+    if (
+      !window.confirm(
+        `Delete the local copy of "${record.title || record.filename}"?\n\n` +
+          'This removes the MP4 and its thumbnail from this system. It does not delete any video already published on YouTube.',
+      )
+    ) {
+      return
+    }
+
+    setDeleting((current) => new Set(current).add(record.id))
+    setError(null)
+    try {
+      await api.deleteExport(record.id)
+      setExports((current) =>
+        (current ?? []).filter((item) => item.id !== record.id),
+      )
+      if (selectedId === record.id) close()
+      setNotice('Local export deleted. YouTube videos and analytics are unchanged.')
+    } catch (err) {
+      setError(err as Error)
+    } finally {
+      setDeleting((current) => {
+        const next = new Set(current)
+        next.delete(record.id)
+        return next
+      })
+    }
+  }
+
   const filtered = (exports ?? []).filter((record) => {
     if (filter === 'all') return true
     const published = publishByExport.get(record.id)?.status === 'published'
@@ -177,7 +222,7 @@ export function Publishing() {
             <span className="serif-accent text-sodium-500">ready to post.</span>
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-relaxed text-ink-300">
-            Choose a finished export, read the metadata AutoClip drafted from the clip itself,
+            Choose a finished export, read the metadata M-CLIP drafted from the clip itself,
             edit anything that is off, then upload to YouTube. Nothing is public unless you say so.
           </p>
         </div>
@@ -206,6 +251,26 @@ export function Publishing() {
           <ErrorNote error={error} onDismiss={() => setError(null)} />
         </div>
       )}
+
+      <section className="rise">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Publishing analytics</p>
+            <p className="mt-1 text-[11px] text-ink-500">
+              Live YouTube totals for videos uploaded from M-CLIP
+            </p>
+          </div>
+          <button onClick={() => void loadAnalytics()} className="btn btn-quiet text-[11px]">
+            Refresh
+          </button>
+        </div>
+        <AnalyticsPanel
+          analytics={analytics}
+          needsScope={status !== null && !status.analytics_scope}
+          onReconnect={() => void connect()}
+          reconnecting={connecting}
+        />
+      </section>
 
       {selectedId ? (
         <PublishComposer
@@ -271,6 +336,8 @@ export function Publishing() {
                   record={record}
                   publish={publishByExport.get(record.id) ?? null}
                   onOpen={() => open(record.id)}
+                  onDelete={() => void deleteLocalExport(record)}
+                  deleting={deleting.has(record.id)}
                 />
               ))}
             </div>
@@ -300,6 +367,87 @@ export function Publishing() {
           />
         </div>
       </section>
+    </div>
+  )
+}
+
+function AnalyticsPanel({
+  analytics,
+  needsScope,
+  onReconnect,
+  reconnecting,
+}: {
+  analytics: PublishingAnalytics | null
+  needsScope: boolean
+  onReconnect: () => void
+  reconnecting: boolean
+}) {
+  if (needsScope) {
+    return (
+      <div className="glass mt-3 flex flex-wrap items-center justify-between gap-4 p-5">
+        <p className="max-w-xl text-xs leading-relaxed text-ink-400">
+          Connect YouTube again to grant read-only analytics access. Upload permissions remain
+          unchanged.
+        </p>
+        <button onClick={onReconnect} disabled={reconnecting} className="btn btn-ghost">
+          {reconnecting ? 'Opening Google…' : 'Grant analytics access'}
+        </button>
+      </div>
+    )
+  }
+
+  if (!analytics) {
+    return (
+      <div className="glass mt-3 p-5">
+        <p className="text-xs text-ink-500">Reading YouTube statistics…</p>
+      </div>
+    )
+  }
+
+  const totals = analytics.totals
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Published" value={totals.published ?? 0} />
+        <Metric label="Views" value={totals.views ?? 0} />
+        <Metric label="Likes" value={totals.likes ?? 0} />
+        <Metric label="Comments" value={totals.comments ?? 0} />
+      </div>
+      {analytics.videos.length > 0 && (
+        <div className="glass overflow-hidden">
+          {analytics.videos.map((video) => (
+            <a
+              key={video.job_id}
+              href={video.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex flex-wrap items-center gap-3 border-b border-white/[0.07] px-4 py-3 last:border-b-0 hover:bg-white/[0.035]"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-semibold text-ink-100">
+                  {video.title}
+                </span>
+                <span className="mt-1 block text-[10px] capitalize text-ink-500">
+                  {video.privacy}
+                </span>
+              </span>
+              <span className="numeric text-[11px] text-ink-300">{video.views} views</span>
+              <span className="numeric text-[11px] text-ink-500">{video.likes} likes</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="glass p-4">
+      <p className="eyebrow">{label}</p>
+      <p className="numeric mt-2 text-3xl font-bold tracking-tight text-ink-100">
+        {value.toLocaleString()}
+      </p>
     </div>
   )
 }
@@ -386,12 +534,31 @@ function YouTubeCard({
             </dd>
           </div>
         )}
+        {status.export_directory && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-ink-500">Exports</dt>
+            <dd
+              className="max-w-[70%] truncate text-right text-ink-300"
+              title={status.export_directory}
+            >
+              {status.export_directory}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {!status.configured && (
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-ink-400">
           {status.detail || 'The OAuth client file is missing.'}{' '}
           {status.hint && <span className="text-ink-500">{status.hint}</span>}
+        </p>
+      )}
+
+      {status.connected && !status.analytics_scope && (
+        <p className="mt-4 border-t border-white/10 pt-3 text-[10px] leading-relaxed text-signal-warn">
+          Analytics is not connected yet. Reconnect below using the analytics grant. Enable
+          YouTube Data API v3 in Google Cloud Console, configure the OAuth consent screen, and
+          keep http://localhost:{window.location.port || '8000'} as a registered redirect URI.
         </p>
       )}
 
@@ -424,27 +591,31 @@ function ExportCard({
   record,
   publish,
   onOpen,
+  onDelete,
+  deleting,
 }: {
   record: ExportDetail
   publish: PublishRecord | null
   onOpen: () => void
+  onDelete: () => void
+  deleting: boolean
 }) {
   const published = publish?.status === 'published'
   const badge = publish ? PUBLISH_BADGE[publish.status] : null
 
   return (
-    <button
-      onClick={onOpen}
-      className="glass group overflow-hidden p-2 text-left transition-transform duration-300 hover:-translate-y-0.5 [&:hover]:shadow-[0_36px_80px_-40px_rgba(0,0,0,0.9)]"
-    >
-      <div className="relative aspect-[4/5] overflow-hidden rounded-[16px] bg-ink-800">
+    <article className="glass group overflow-hidden p-2 text-left transition-transform duration-300 hover:-translate-y-0.5 [&:hover]:shadow-[0_36px_80px_-40px_rgba(0,0,0,0.9)]">
+      <button
+        onClick={onOpen}
+        className="relative block w-full aspect-[4/5] overflow-hidden rounded-[16px] bg-ink-800 text-left"
+      >
         <img
           src={record.thumbnail_url}
           alt=""
           loading="lazy"
           className="size-full object-cover transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.03]"
         />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent p-3 pt-10">
+        <div className="absolute inset-x-0 bottom-0 bg-black/80 p-3 pt-10">
           <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-white">
             {record.title || record.filename}
           </p>
@@ -460,18 +631,31 @@ function ExportCard({
             {badge.label}
           </span>
         )}
-      </div>
+      </button>
 
       <div className="flex items-center justify-between gap-2 px-2 py-2.5">
         <span className="truncate text-[10px] text-ink-500">
           {new Date(record.created_at).toLocaleDateString()}
           {record.validation && !record.validation.ok ? ' · needs attention' : ''}
         </span>
-        <span className="text-[10px] font-semibold text-sodium-400 opacity-0 transition-opacity group-hover:opacity-100">
-          {published ? 'View' : publish ? 'Queue' : 'Publish'} →
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={onOpen}
+            className="text-[10px] font-semibold text-sodium-400 opacity-70 transition-opacity hover:opacity-100"
+          >
+            {published ? 'View' : publish ? 'Queue' : 'Publish'} →
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={deleting}
+            className="btn btn-quiet px-2 py-1 text-[10px] text-signal-bad"
+            aria-label={`Delete ${record.title || record.filename} from this system`}
+          >
+            {deleting ? '…' : 'Delete'}
+          </button>
+        </div>
       </div>
-    </button>
+    </article>
   )
 }
 

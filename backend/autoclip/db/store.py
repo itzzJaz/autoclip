@@ -361,12 +361,14 @@ def upsert_clip_edit(edit: ClipEdit) -> ClipEdit:
     with connection() as conn:
         conn.execute(
             """
-            INSERT INTO clip_edits (clip_id, edited_words_json, caption_style, ratio, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO clip_edits (clip_id, edited_words_json, caption_style, ratio,
+                                    caption_scale, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(clip_id) DO UPDATE SET
                 edited_words_json = excluded.edited_words_json,
                 caption_style = excluded.caption_style,
                 ratio = excluded.ratio,
+                caption_scale = excluded.caption_scale,
                 updated_at = excluded.updated_at
             """,
             (
@@ -374,6 +376,7 @@ def upsert_clip_edit(edit: ClipEdit) -> ClipEdit:
                 json.dumps(edit.edited_words) if edit.edited_words is not None else None,
                 edit.caption_style,
                 edit.ratio,
+                edit.caption_scale,
                 utcnow(),
             ),
         )
@@ -420,7 +423,9 @@ def get_export(export_id: str) -> Export | None:
 def list_exports(clip_id: str) -> list[Export]:
     with connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM exports WHERE clip_id = ? ORDER BY created_at DESC", (clip_id,)
+            "SELECT * FROM exports WHERE clip_id = ? AND size_bytes > 0 "
+            "ORDER BY created_at DESC",
+            (clip_id,),
         ).fetchall()
     return [Export.from_row(r) for r in rows]
 
@@ -429,9 +434,17 @@ def list_all_exports(limit: int = 100) -> list[Export]:
     """Every export, newest first — the export-history feed."""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM exports ORDER BY created_at DESC LIMIT ?", (limit,)
+            "SELECT * FROM exports WHERE size_bytes > 0 ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
     return [Export.from_row(r) for r in rows]
+
+
+def update_export_size(export_id: str, size_bytes: int) -> None:
+    with connection() as conn:
+        conn.execute(
+            "UPDATE exports SET size_bytes = ? WHERE id = ?",
+            (size_bytes, export_id),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -498,7 +511,8 @@ def list_publish_jobs(limit: int = 100) -> list[PublishJob]:
 def next_pending_publish_job() -> PublishJob | None:
     with connection() as conn:
         row = conn.execute(
-            "SELECT * FROM publish_jobs WHERE status = 'pending' "
+            "SELECT * FROM publish_jobs "
+            "WHERE status = 'pending' OR (status = 'processing' AND video_id IS NOT NULL) "
             "ORDER BY created_at ASC LIMIT 1"
         ).fetchone()
     return PublishJob.from_row(row) if row else None
@@ -554,3 +568,94 @@ def update_publish_job(
 def delete_publish_job(job_id: str) -> None:
     with connection() as conn:
         conn.execute("DELETE FROM publish_jobs WHERE id = ?", (job_id,))
+
+
+# Instagram jobs
+
+def create_instagram_job(job: Any) -> Any:
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO instagram_jobs (
+                id, export_id, caption, status, container_id, media_id, url, error,
+                created_at, updated_at, published_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job.id,
+                job.export_id,
+                job.caption,
+                job.status,
+                job.container_id,
+                job.media_id,
+                job.url,
+                job.error,
+                job.created_at,
+                job.updated_at,
+                job.published_at,
+            ),
+        )
+    return job
+
+
+def get_instagram_job_for_export(export_id: str) -> Any | None:
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM instagram_jobs WHERE export_id = ?", (export_id,)
+        ).fetchone()
+    if not row:
+        return None
+    from .models import InstagramJob
+    return InstagramJob.from_row(row)
+
+
+def get_instagram_job(job_id: str) -> Any | None:
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM instagram_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+    if not row:
+        return None
+    from .models import InstagramJob
+    return InstagramJob.from_row(row)
+
+
+def list_instagram_jobs(limit: int = 100) -> list[Any]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM instagram_jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    from .models import InstagramJob
+    return [InstagramJob.from_row(row) for row in rows]
+
+
+def update_instagram_job(
+    job_id: str,
+    *,
+    caption: str | None = None,
+    status: str | None = None,
+    container_id: str | None = None,
+    media_id: str | None = None,
+    url: str | None = None,
+    error: str | None | _Unset = UNSET,
+    published_at: str | None | _Unset = UNSET,
+) -> None:
+    fields: dict[str, Any] = {"updated_at": utcnow()}
+    for name, value in (
+        ("caption", caption),
+        ("status", status),
+        ("container_id", container_id),
+        ("media_id", media_id),
+        ("url", url),
+    ):
+        if value is not None:
+            fields[name] = value
+    for name, value in (("error", error), ("published_at", published_at)):
+        if not isinstance(value, _Unset):
+            fields[name] = value
+    assignments = ", ".join(f"{name} = ?" for name in fields)
+    with connection() as conn:
+        conn.execute(
+            f"UPDATE instagram_jobs SET {assignments} WHERE id = ?",
+            (*fields.values(), job_id),
+        )

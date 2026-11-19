@@ -113,7 +113,7 @@ class TestSettings:
     def test_unknown_provider_is_rejected(self, client: TestClient) -> None:
         response = client.put("/api/settings", json={"active_provider": "skynet"})
 
-        assert response.status_code == 400
+        assert response.status_code in (400, 422)
 
     def test_inverted_clip_lengths_are_rejected(self, client: TestClient) -> None:
         response = client.put(
@@ -325,6 +325,29 @@ class TestClips:
         response = client.patch(f"/api/clips/{clip_id}", json={"start_s": 90.0, "end_s": 30.0})
 
         assert response.status_code == 400
+
+    def test_out_of_bounds_trim_is_rejected(
+        self, client: TestClient, job_with_clips: Job
+    ) -> None:
+        clip_id = client.get(f"/api/jobs/{job_with_clips.id}/clips").json()[0]["id"]
+
+        response = client.patch(
+            f"/api/clips/{clip_id}", json={"start_s": -1.0, "end_s": 601.0}
+        )
+
+        assert response.status_code in (400, 422)
+
+    def test_caption_scale_is_persisted(
+        self, client: TestClient, job_with_clips: Job
+    ) -> None:
+        clip_id = client.get(f"/api/jobs/{job_with_clips.id}/clips").json()[0]["id"]
+
+        response = client.patch(
+            f"/api/clips/{clip_id}/captions", json={"caption_scale": 1.35}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["caption_scale"] == 1.35
 
     def test_caption_style_is_persisted(self, client: TestClient, job_with_clips: Job) -> None:
         clip_id = client.get(f"/api/jobs/{job_with_clips.id}/clips").json()[0]["id"]

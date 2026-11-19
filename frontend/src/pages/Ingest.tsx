@@ -7,6 +7,8 @@ import {
   formatDuration,
   type Job,
   type JobSettingsOverrides,
+  type PublishingAnalytics,
+  type InstagramStatus,
   type ProviderStatus,
 } from '../api'
 import { ErrorNote } from '../components/ErrorNote'
@@ -23,11 +25,15 @@ export function Ingest() {
   const [overrides, setOverrides] = useState<JobSettingsOverrides>({})
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [analytics, setAnalytics] = useState<PublishingAnalytics | null>(null)
+  const [instagram, setInstagram] = useState<InstagramStatus | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     api.listJobs(8).then(setJobs).catch(() => undefined)
     api.providerStatus().then(setProviders).catch(() => undefined)
+    api.publishingAnalytics().then(setAnalytics).catch(() => undefined)
+    api.instagramStatus().then(setInstagram).catch(() => undefined)
   }, [])
 
   const start = useCallback(
@@ -72,7 +78,7 @@ export function Ingest() {
             <span className="serif-accent text-sodium-500">Shorts</span> out.
           </h1>
           <p className="relative mt-5 max-w-xl text-sm leading-relaxed text-ink-300">
-            Drop in a podcast, talk, or stream. AutoClip finds the moments that stand on
+            Drop in a podcast, talk, or stream. M-CLIP finds the moments that stand on
             their own, reframes them for a phone, and burns the captions.
           </p>
 
@@ -189,6 +195,29 @@ export function Ingest() {
         </p>
       )}
 
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StudioMetric
+          label="Published videos"
+          value={(analytics?.totals.published ?? 0).toLocaleString()}
+          detail="YouTube"
+        />
+        <StudioMetric
+          label="Total views"
+          value={(analytics?.totals.views ?? 0).toLocaleString()}
+          detail="YouTube"
+        />
+        <StudioMetric
+          label="Instagram followers"
+          value={(instagram?.account.followers ?? 0).toLocaleString()}
+          detail={instagram?.account.username ? `@${instagram.account.username}` : 'Not connected'}
+        />
+        <StudioMetric
+          label="Instagram posts"
+          value={(instagram?.account.media ?? 0).toLocaleString()}
+          detail="Reels and posts"
+        />
+      </section>
+
       <section className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
         <AdvancedOptions
           open={advancedOpen}
@@ -199,6 +228,18 @@ export function Ingest() {
         />
         <RecentJobs jobs={jobs} />
       </section>
+    </div>
+  )
+}
+
+function StudioMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="glass p-4 sm:p-5">
+      <p className="eyebrow">{label}</p>
+      <p className="numeric mt-3 text-[clamp(1.7rem,4vw,2.5rem)] font-bold leading-none tracking-tight text-ink-100">
+        {value}
+      </p>
+      <p className="mt-2 truncate text-[10px] text-ink-500">{detail}</p>
     </div>
   )
 }

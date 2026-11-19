@@ -315,6 +315,17 @@ class TestPublishApi:
         assert report["ok"] is False
         assert any(check["key"] == "file" for check in report["errors"])
 
+    def test_delete_export_removes_only_the_local_file(
+        self, client: TestClient, export_record: Export, export_file: Path
+    ) -> None:
+        assert export_file.exists()
+
+        response = client.delete(f"/api/exports/{export_record.id}")
+
+        assert response.status_code == 204
+        assert not export_file.exists()
+        assert client.get("/api/exports").json() == []
+
 
 class TestMetadata:
     def context(self) -> ClipContext:

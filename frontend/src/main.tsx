@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { App } from './App'
 import './index.css'
 import { Ingest } from './pages/Ingest'
+import { Instagram } from './pages/Instagram'
 import { JobProgress } from './pages/JobProgress'
 import { Publishing } from './pages/Publishing'
 import { Review } from './pages/Review'
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
       { path: 'jobs/:jobId', element: <JobProgress /> },
       { path: 'jobs/:jobId/clips', element: <Review /> },
       { path: 'publishing', element: <Publishing /> },
+      { path: 'instagram', element: <Instagram /> },
       { path: 'settings', element: <Settings /> },
     ],
   },

@@ -153,6 +153,7 @@ class ClipOut(BaseModel):
     user_trimmed: bool
     caption_style: str = "bold_pop"
     ratio: str = "9:16"
+    caption_scale: float = 1.0
     exports: list[ExportOut] = Field(default_factory=list)
 
     @classmethod
@@ -180,6 +181,7 @@ class ClipOut(BaseModel):
             user_trimmed=clip.user_trimmed,
             caption_style=edit.caption_style if edit else "bold_pop",
             ratio=edit.ratio if edit else "9:16",
+            caption_scale=edit.caption_scale if edit else 1.0,
             exports=[ExportOut.of(e) for e in (exports or [])],
         )
 
@@ -203,11 +205,13 @@ class CaptionPatchIn(BaseModel):
     words: list[WordOut] | None = None
     caption_style: str | None = None
     ratio: Literal["9:16", "1:1", "16:9"] | None = None
+    caption_scale: float | None = Field(default=None, ge=0.7, le=1.8)
 
 
 class ExportRequestIn(BaseModel):
     ratio: Literal["9:16", "1:1", "16:9"] = "9:16"
     style: str = "bold_pop"
+    caption_scale: float = Field(default=1.0, ge=0.7, le=1.8)
     write_srt: bool = False
 
 
@@ -264,6 +268,7 @@ class SystemOut(BaseModel):
     ffmpeg_version: str | None
     has_libass: bool
     nvenc_works: bool
+    videotoolbox_works: bool = False
     accel: str
     gpu_name: str | None
     compute_type: str
@@ -391,6 +396,54 @@ class PublishingStatusOut(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     detail: str = ""
     hint: str = ""
+    export_directory: str = ""
+    analytics_scope: bool = False
+
+
+class PublishedVideoOut(BaseModel):
+    job_id: str
+    export_id: str
+    video_id: str
+    title: str
+    url: str
+    published_at: str | None
+    views: int = 0
+    likes: int = 0
+    comments: int = 0
+    privacy: str = ""
+
+
+class PublishingAnalyticsOut(BaseModel):
+    videos: list[PublishedVideoOut] = Field(default_factory=list)
+    totals: dict[str, int] = Field(default_factory=dict)
+
+
+class InstagramStatusOut(BaseModel):
+    configured: bool
+    missing: list[str] = Field(default_factory=list)
+    public_url_ok: bool
+    account_id: str = ""
+    public_base_url: str = ""
+    account: dict[str, Any] = Field(default_factory=dict)
+
+
+class InstagramPublishIn(BaseModel):
+    caption: str = Field(default="", max_length=2200)
+    confirm: bool = False
+
+
+class InstagramPublishOut(BaseModel):
+    id: str
+    export_id: str
+    caption: str
+    status: str
+    container_id: str | None = None
+    media_id: str | None = None
+    url: str | None = None
+    error: str | None = None
+    created_at: str
+    updated_at: str
+    published_at: str | None = None
 
 
 class OAuthStartOut(BaseModel):

@@ -67,6 +67,7 @@ export interface Clip {
   user_trimmed: boolean
   caption_style: string
   ratio: string
+  caption_scale: number
   exports: ExportRecord[]
 }
 
@@ -165,6 +166,7 @@ export interface SystemStatus {
   ffmpeg_version: string | null
   has_libass: boolean
   nvenc_works: boolean
+  videotoolbox_works: boolean
   accel: string
   gpu_name: string | null
   compute_type: string
@@ -274,6 +276,54 @@ export interface PublishingStatus {
   warnings: string[]
   detail: string
   hint: string
+  export_directory: string
+  analytics_scope: boolean
+}
+
+export interface InstagramStatus {
+  configured: boolean
+  missing: string[]
+  public_url_ok: boolean
+  account_id: string
+  public_base_url: string
+  account: {
+    username?: string
+    name?: string
+    followers?: number
+    media?: number
+  }
+}
+
+export interface InstagramPublishRecord {
+  id: string
+  export_id: string
+  caption: string
+  status: 'pending' | 'processing' | 'published' | 'failed'
+  container_id: string | null
+  media_id: string | null
+  url: string | null
+  error: string | null
+  created_at: string
+  updated_at: string
+  published_at: string | null
+}
+
+export interface PublishedVideo {
+  job_id: string
+  export_id: string
+  video_id: string
+  title: string
+  url: string
+  published_at: string | null
+  views: number
+  likes: number
+  comments: number
+  privacy: string
+}
+
+export interface PublishingAnalytics {
+  videos: PublishedVideo[]
+  totals: Record<string, number>
 }
 
 export interface PublishDraft {
@@ -393,17 +443,28 @@ export const api = {
 
   patchCaptions: (
     clipId: string,
-    patch: { words?: Word[]; caption_style?: string; ratio?: string },
+    patch: { words?: Word[]; caption_style?: string; ratio?: string; caption_scale?: number },
   ) =>
     request<Clip>(`/api/clips/${clipId}/captions`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
 
-  exportClip: (clipId: string, ratio: string, style: string, writeSrt = false) =>
+  exportClip: (
+    clipId: string,
+    ratio: string,
+    style: string,
+    captionScale = 1,
+    writeSrt = false,
+  ) =>
     request<ExportRecord>(`/api/clips/${clipId}/export`, {
       method: 'POST',
-      body: JSON.stringify({ ratio, style, write_srt: writeSrt }),
+      body: JSON.stringify({
+        ratio,
+        style,
+        caption_scale: captionScale,
+        write_srt: writeSrt,
+      }),
     }),
 
   captionStyles: () => request<CaptionStyle[]>('/api/caption-styles'),
@@ -418,6 +479,8 @@ export const api = {
     }),
 
   listExports: (limit = 100) => request<ExportDetail[]>(`/api/exports?limit=${limit}`),
+  deleteExport: (exportId: string) =>
+    request<void>(`/api/exports/${exportId}`, { method: 'DELETE' }),
   getExport: (exportId: string, validate = true) =>
     request<ExportDetail>(`/api/exports/${exportId}?validate=${validate}`),
 
@@ -446,6 +509,17 @@ export const api = {
     request<void>('/api/publishing/auth/disconnect', { method: 'POST' }),
   publishingQueue: (limit = 100) =>
     request<PublishRecord[]>(`/api/publishing/queue?limit=${limit}`),
+  publishingAnalytics: () =>
+    request<PublishingAnalytics>('/api/publishing/analytics'),
+  instagramStatus: () =>
+    request<InstagramStatus>('/api/instagram/status'),
+  instagramJobs: () =>
+    request<InstagramPublishRecord[]>('/api/instagram/jobs'),
+  publishInstagram: (exportId: string, caption: string, confirm: boolean) =>
+    request<InstagramPublishRecord>(`/api/instagram/exports/${exportId}/publish`, {
+      method: 'POST',
+      body: JSON.stringify({ caption, confirm }),
+    }),
   retryPublish: (jobId: string) =>
     request<PublishRecord>(`/api/publishing/queue/${jobId}/retry`, { method: 'POST' }),
 

@@ -12,12 +12,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
 from .. import config
+from .. import paths
 from ..db import store
-from ..db.models import PublishJob, new_id
+from ..db.models import InstagramJob, PublishJob, new_id, utcnow
 from ..pipeline.runner import JobWorkspace
 from ..pipeline.transcript import Transcript
-from ..publishing import oauth, thumbnail
+from ..publishing import instagram, oauth, thumbnail, youtube
 from ..publishing.credentials import (
+    has_analytics_scope,
     UPLOAD_SCOPE,
     CredentialsError,
     client_summary,
@@ -28,6 +30,11 @@ from ..publishing.metadata import ClipContext, generate
 from ..publishing.queue import publish_queue
 from ..publishing.validation import validate_export
 from .schemas import (
+    InstagramPublishIn,
+    InstagramPublishOut,
+    InstagramStatusOut,
+    PublishedVideoOut,
+    PublishingAnalyticsOut,
     ExportDetailOut,
     MetadataIn,
     MetadataOut,
@@ -76,6 +83,30 @@ async def export_thumbnail(export_id: str) -> FileResponse:
     if thumb is None:
         raise HTTPException(status_code=404, detail="Could not generate a thumbnail.")
     return FileResponse(thumb, media_type="image/jpeg")
+
+
+@router.delete("/exports/{export_id}", status_code=204)
+async def delete_export(export_id: str) -> None:
+    """Delete only the local MP4 and thumbnail, preserving YouTube analytics."""
+    record = await asyncio.to_thread(store.get_export, export_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Export not found.")
+
+    publish = await asyncio.to_thread(store.get_publish_job_for_export, export_id)
+    if publish is not None and publish.status in ("pending", "uploading", "processing"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "This export is currently uploading.",
+                "hint": "Wait for the upload or cancel it before deleting the local copy.",
+            },
+        )
+
+    path = Path(record.path)
+    await asyncio.to_thread(path.unlink, missing_ok=True)
+    thumb = paths.work_dir() / "thumbs" / f"{export_id}.jpg"
+    await asyncio.to_thread(thumb.unlink, missing_ok=True)
+    await asyncio.to_thread(store.update_export_size, export_id, 0)
 
 
 # --------------------------------------------------------------------------
@@ -249,6 +280,168 @@ async def retry_publish(job_id: str) -> PublishOut:
     return PublishOut.of(updated or job)
 
 
+@router.get("/instagram/status", response_model=InstagramStatusOut)
+async def instagram_status() -> InstagramStatusOut:
+    return InstagramStatusOut(**await asyncio.to_thread(instagram.status))
+
+
+@router.get("/instagram/jobs", response_model=list[InstagramPublishOut])
+async def instagram_jobs(limit: int = 100) -> list[InstagramPublishOut]:
+    return [
+        _instagram_out(job)
+        for job in await asyncio.to_thread(store.list_instagram_jobs, limit)
+    ]
+
+
+@router.post(
+    "/instagram/exports/{export_id}/publish",
+    response_model=InstagramPublishOut,
+    status_code=201,
+)
+async def instagram_publish(export_id: str, payload: InstagramPublishIn) -> InstagramPublishOut:
+    if not payload.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Instagram publishing needs confirmation.",
+                "hint": "Review the Reel, caption, and public video URL, then confirm.",
+            },
+        )
+
+    record = await asyncio.to_thread(store.get_export, export_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Export not found.")
+    existing = await asyncio.to_thread(store.get_instagram_job_for_export, export_id)
+    if existing is not None and existing.status in ("processing", "published"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"This export is already {existing.status} on Instagram.",
+        )
+
+    config = await asyncio.to_thread(instagram.configuration)
+    public_base = config["public_base_url"]
+    if not public_base.startswith("https://"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Instagram cannot reach a local export.",
+                "hint": (
+                    "Set AUTOCLIP_PUBLIC_BASE_URL to a public HTTPS tunnel or host "
+                    "that serves /api/exports/{export_id}/download?inline=1."
+                ),
+            },
+        )
+
+    video_url = f"{public_base}/api/exports/{export_id}/download?inline=1"
+    if existing is None:
+        job = store.create_instagram_job(
+            InstagramJob(
+                id=new_id(),
+                export_id=export_id,
+                caption=payload.caption,
+                status="processing",
+            )
+        )
+    else:
+        job_id = existing.id
+        await asyncio.to_thread(
+            store.update_instagram_job,
+            job_id,
+            caption=payload.caption,
+            status="processing",
+            error=None,
+            published_at=None,
+        )
+        job = await asyncio.to_thread(store.get_instagram_job, job_id)
+    if job is None:
+        raise HTTPException(status_code=500, detail="Could not persist the Instagram job.")
+
+    try:
+        result = await asyncio.to_thread(
+            instagram.publish_reel,
+            video_url=video_url,
+            caption=payload.caption,
+        )
+        await asyncio.to_thread(
+            store.update_instagram_job,
+            job.id,
+            status="published",
+            container_id=result["container_id"],
+            media_id=result["media_id"],
+            url=result["url"],
+            error=None,
+            published_at=utcnow(),
+        )
+    except instagram.InstagramError as exc:
+        await asyncio.to_thread(
+            store.update_instagram_job,
+            job.id,
+            status="failed",
+            error=str(exc),
+        )
+
+    updated = await asyncio.to_thread(store.get_instagram_job, job.id)
+    return _instagram_out(updated or job)
+
+
+@router.get("/publishing/analytics", response_model=PublishingAnalyticsOut)
+async def publishing_analytics() -> PublishingAnalyticsOut:
+    """Live YouTube statistics for videos published through AutoClip."""
+    published = [
+        job
+        for job in await asyncio.to_thread(store.list_publish_jobs, 500)
+        if job.status == "published" and job.video_id
+    ]
+    if not published:
+        return PublishingAnalyticsOut(
+            totals={"published": 0, "views": 0, "likes": 0, "comments": 0},
+        )
+
+    try:
+        stats = await asyncio.to_thread(
+            youtube.video_statistics,
+            [job.video_id for job in published if job.video_id],
+        )
+    except youtube.YouTubeError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "YouTube statistics could not be read.",
+                "hint": (
+                    "Reconnect YouTube after enabling YouTube Data API v3 and YouTube "
+                    "Analytics API v2 in Google Cloud Console. "
+                    + (exc.hint or str(exc))
+                ),
+            },
+        ) from exc
+
+    videos: list[PublishedVideoOut] = []
+    for job in published:
+        item = stats.get(job.video_id or "", {})
+        videos.append(
+            PublishedVideoOut(
+                job_id=job.id,
+                export_id=job.export_id,
+                video_id=job.video_id or "",
+                title=item.get("title") or job.title,
+                url=job.url or youtube.watch_url(job.video_id or ""),
+                published_at=job.published_at,
+                views=int(item.get("views") or 0),
+                likes=int(item.get("likes") or 0),
+                comments=int(item.get("comments") or 0),
+                privacy=str(item.get("privacy") or job.privacy),
+            )
+        )
+
+    totals = {
+        "published": len(videos),
+        "views": sum(video.views for video in videos),
+        "likes": sum(video.likes for video in videos),
+        "comments": sum(video.comments for video in videos),
+    }
+    return PublishingAnalyticsOut(videos=videos, totals=totals)
+
+
 # --------------------------------------------------------------------------
 # OAuth
 # --------------------------------------------------------------------------
@@ -291,6 +484,8 @@ def _status_for(request: Request) -> PublishingStatusOut:
         warnings=warnings,
         detail=summary.get("detail", ""),
         hint=summary.get("hint", ""),
+        export_directory=str(paths.exports_dir()),
+        analytics_scope=has_analytics_scope(),
     )
 
 
@@ -349,6 +544,21 @@ async def oauth_disconnect() -> None:
 # Helpers
 # --------------------------------------------------------------------------
 
+
+def _instagram_out(job) -> InstagramPublishOut:
+    return InstagramPublishOut(
+        id=job.id,
+        export_id=job.export_id,
+        caption=job.caption,
+        status=job.status,
+        container_id=job.container_id,
+        media_id=job.media_id,
+        url=job.url,
+        error=job.error,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        published_at=job.published_at,
+    )
 
 def _export_out(record, *, validate: bool) -> ExportDetailOut:
     clip = store.get_clip(record.clip_id)

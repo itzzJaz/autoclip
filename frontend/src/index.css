@@ -38,29 +38,26 @@
   --font-display: 'Instrument Serif', Georgia, serif;
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', Archivo, ui-sans-serif, system-ui, sans-serif;
 
-  /* Midnight → graphite. The old token names are kept so every existing
-     component picks up the new palette without being rewritten. */
-  --color-ink-900: #17151d;
-  --color-ink-850: #1d1a24;
-  --color-ink-800: #26222f;
-  --color-ink-700: #353040;
-  --color-ink-600: #4c4659;
-  --color-ink-500: #6f687e;
-  --color-ink-400: #948ca3;
-  --color-ink-300: #b9b1c5;
-  --color-ink-200: #dcd5e3;
-  --color-ink-100: #f4edf2;
+  /* 70% graphite, 20% blue-slate, 10% mint accent. */
+  --color-ink-900: #111318;
+  --color-ink-850: #171b20;
+  --color-ink-800: #20262d;
+  --color-ink-700: #2b333b;
+  --color-ink-600: #46515a;
+  --color-ink-500: #66727b;
+  --color-ink-400: #8e99a3;
+  --color-ink-300: #bbc4ca;
+  --color-ink-200: #dde3e6;
+  --color-ink-100: #f3f5f4;
 
-  /* Neon pink is the signal. Coral is its warm neighbour, used for the primary
-     button and for "in progress" states. Neither is used as a wash. */
-  --color-sodium-400: #ff8fbd;
-  --color-sodium-500: #ff65a8;
-  --color-sodium-600: #ff986a;
-  --color-sodium-700: #c94e7e;
+  --color-sodium-400: #8de0bb;
+  --color-sodium-500: #69c7a0;
+  --color-sodium-600: #53a98a;
+  --color-sodium-700: #3e8069;
 
-  --color-signal-good: #7ce0b3;
-  --color-signal-bad: #ff7f8d;
-  --color-signal-warn: #ffc46b;
+  --color-signal-good: #69c7a0;
+  --color-signal-bad: #ef7e78;
+  --color-signal-warn: #ddb96a;
 
   --radius-glass: 24px;
   --radius-panel: 16px;
@@ -73,11 +70,7 @@
 @layer base {
   html {
     min-height: 100%;
-    background:
-      radial-gradient(58rem 42rem at 12% -8%, rgba(255, 101, 168, 0.22), transparent 62%),
-      radial-gradient(52rem 38rem at 92% 2%, rgba(255, 152, 106, 0.14), transparent 64%),
-      radial-gradient(44rem 32rem at 50% 112%, rgba(255, 101, 168, 0.09), transparent 70%),
-      #17151d;
+    background: #111318;
     background-attachment: fixed;
     color-scheme: dark;
   }
@@ -149,7 +142,7 @@
   /* The three glass weights. Keeping one material and varying only its size is
      what makes the interface read as a single object rather than a collage. */
   .glass {
-    background: linear-gradient(150deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.028));
+    background: rgba(32, 38, 45, 0.82);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--radius-glass);
     box-shadow:
@@ -205,15 +198,6 @@
   }
   select.field {
     appearance: none;
-    background-image: linear-gradient(45deg, transparent 50%, var(--color-ink-400) 50%),
-      linear-gradient(135deg, var(--color-ink-400) 50%, transparent 50%);
-    background-position:
-      calc(100% - 18px) calc(50% - 2px),
-      calc(100% - 13px) calc(50% - 2px);
-    background-size:
-      5px 5px,
-      5px 5px;
-    background-repeat: no-repeat;
     padding-right: 2.4rem;
   }
   select.field option {
@@ -248,9 +232,9 @@
   }
 
   .btn-primary {
-    background: linear-gradient(100deg, #ff65a8 0%, #ff8a9e 52%, #ff986a 100%);
-    color: #17151d;
-    box-shadow: 0 14px 34px -16px rgba(255, 101, 168, 0.85);
+    background: #69c7a0;
+    color: #111318;
+    box-shadow: 0 14px 34px -16px rgba(105, 199, 160, 0.85);
   }
   .btn-primary:hover:not(:disabled) {
     filter: brightness(1.06);
@@ -351,6 +335,21 @@
   animation: rise 620ms var(--ease-out-expo) both;
 }
 
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.998);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-transition {
+  animation: page-in 360ms var(--ease-out-expo) both;
+}
+
 @keyframes pulse-ring {
   0% {
     box-shadow: 0 0 0 0 rgba(255, 101, 168, 0.45);
@@ -381,7 +380,7 @@
   position: absolute;
   inset: 0;
   width: 33%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  background: rgba(255, 255, 255, 0.16);
   animation: shimmer 1.6s ease-in-out infinite;
 }
 

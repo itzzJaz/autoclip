@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -157,6 +158,15 @@ async def patch_clip(clip_id: str, payload: ClipPatchIn) -> ClipOut:
     if end_s <= start_s:
         raise HTTPException(status_code=400, detail="End must come after start.")
 
+    job = await asyncio.to_thread(store.get_job, clip.job_id)
+    source = await asyncio.to_thread(store.get_source, job.source_id) if job else None
+    if source is not None:
+        if start_s < 0 or end_s > source.duration_s:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Clip boundaries must be within 0 and {source.duration_s:.1f} seconds.",
+            )
+
     trimmed = payload.start_s is not None or payload.end_s is not None
     start_word = end_word = None
 
@@ -206,6 +216,11 @@ async def patch_captions(clip_id: str, payload: CaptionPatchIn) -> ClipOut:
         ),
         caption_style=payload.caption_style or (existing.caption_style if existing else "bold_pop"),
         ratio=payload.ratio or (existing.ratio if existing else "9:16"),
+        caption_scale=(
+            payload.caption_scale
+            if payload.caption_scale is not None
+            else (existing.caption_scale if existing else 1.0)
+        ),
     )
     await asyncio.to_thread(store.upsert_clip_edit, edit)
 
@@ -228,6 +243,10 @@ async def export_clip(clip_id: str, payload: ExportRequestIn) -> ExportOut:
         style = captions_module.get_style(payload.style)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    style = replace(
+        style,
+        size_ratio=max(0.01, style.size_ratio * payload.caption_scale),
+    )
 
     words = [
         Word(text=w.text, start=w.start, end=w.end, speaker=w.speaker)

@@ -141,6 +141,7 @@ async def system_status() -> SystemOut:
         ffmpeg_version=report.ffmpeg.version,
         has_libass=report.ffmpeg.has_libass,
         nvenc_works=report.ffmpeg.nvenc_works,
+        videotoolbox_works=report.ffmpeg.videotoolbox_works,
         accel=report.gpu.accel,
         gpu_name=report.gpu.name,
         compute_type=report.gpu.compute_type,

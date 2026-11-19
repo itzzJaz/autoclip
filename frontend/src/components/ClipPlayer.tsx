@@ -35,6 +35,8 @@ export function ClipPlayer({
   style,
   ratio,
   cropPath,
+  captionScale = 1,
+  maxHeightVh = MAX_HEIGHT_VH,
 }: {
   src: string
   startS: number
@@ -43,6 +45,8 @@ export function ClipPlayer({
   style: CaptionStyle | undefined
   ratio: string
   cropPath?: CropPath | null
+  captionScale?: number
+  maxHeightVh?: number
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -126,7 +130,7 @@ export function ClipPlayer({
   // max-height clamp shortens the element without narrowing it, so the rendered
   // shape stops matching the ratio — a 9:16 preview ends up looking square.
   // Deriving a matching max-width makes the box shrink along both axes instead.
-  const maxWidth = `${((MAX_HEIGHT_VH * aspectW) / aspectH).toFixed(3)}vh`
+  const maxWidth = `${((maxHeightVh * aspectW) / aspectH).toFixed(3)}vh`
 
   return (
     <div className="mx-auto flex w-full flex-col items-stretch" style={{ maxWidth }}>
@@ -155,7 +159,21 @@ export function ClipPlayer({
           controls={nativeControls}
         />
 
-        <CaptionOverlay words={words} time={time} style={style} />
+        <CaptionOverlay
+          words={words}
+          time={time}
+          style={
+            style
+              ? {
+                  ...style,
+                  preview: {
+                    ...style.preview,
+                    sizeRatio: style.preview.sizeRatio * captionScale,
+                  },
+                }
+              : undefined
+          }
+        />
 
         {!playing && (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
